@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Architecture and implementation plan. Features described below are **planned**, not claims of completed functionality. Update this section and the checklists as development progresses.
+> **Project status:** Phase 1 foundation and account authentication are implemented. Docker service startup is pending verification on a Docker-enabled machine. Uploads, snippets, sharing, claims, notifications and cleanup remain **planned**. See [development instructions](docs/development.md) and [progress checklist](docs/progress.md) for implemented scope and verification results.
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -31,6 +31,18 @@ The flagship policy is **24-hour expiry + one-time claim + required password + u
 Permanent cloud folders aren't ideal when someone only needs a document or snippet briefly. SnapShare focuses on **temporary access with explicit controls**: *who can open it, how long it remains available, and how many times it may be claimed.*
 
 This project is designed to demonstrate full-stack engineering beyond basic CRUD: cloud upload protocols, authorization, MongoDB atomic operations, background job reliability, failure recovery, and operational observability.
+
+## Implemented foundation
+
+- [x] pnpm workspaces, strict TypeScript and shared Zod contracts/config.
+- [x] React/Vite, Tailwind, shadcn-style Button, React Router and TanStack Query.
+- [x] Sign In, Sign Up and protected Dashboard with mobile layouts.
+- [x] Express, environment validation, Helmet, CORS, origin checks, safe errors and structured logs.
+- [x] Argon2id passwords, opaque cookie sessions and hashed session tokens in MongoDB.
+- [x] Registration/login/logout, current-account endpoint and authentication rate limits.
+- [x] MongoDB replica-set and Redis Compose configuration; separate worker scaffold.
+- [x] Unit/integration tests, browser smoke checks and baseline CI configuration.
+- [ ] Verify Compose services and Redis worker startup with Docker installed.
 
 ## Core features
 
@@ -318,28 +330,28 @@ Implement a conditional MongoDB `findOneAndUpdate` inside a transaction that als
 
 ## Local development
 
-> The following commands describe the **intended setup once the repository is scaffolded**. The README alone does not provide runnable application code or a finished `docker-compose.yml`.
+> Foundation code is runnable. Docker is unavailable in the implementation environment, so persistent Compose service startup and worker connectivity still need verification. See [docs/development.md](docs/development.md) for complete setup, cookie behavior, manual checks and limitations.
 
 ### Prerequisites
 
-- Node.js (current supported LTS), pnpm, Docker + Docker Compose
+- Node.js 22.12+, pnpm 12.11.2, Docker + Docker Compose
 - A MongoDB replica set (local or Atlas) and Redis
-- AWS account with a private S3 bucket and suitable IAM permissions
+- Phase 2 prerequisite: AWS account with private S3 storage. S3 is not required for Phase 1.
 
-### Planned commands
+### Current commands
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 cp .env.example .env
-# Configure environment variables, then start MongoDB/Redis locally:
-docker compose up -d
-# In separate terminals or through the workspace scripts:
-pnpm --filter web dev
-pnpm --filter api dev
-pnpm --filter worker dev
+pnpm services:up
+pnpm dev
 ```
 
-### Planned `.env.example` keys
+Open `http://localhost:5173`; the frontend proxies `/api` to port 4000. On PowerShell use `Copy-Item .env.example .env`. The root `.env` is read only by backend processes. `APP_URL` must match the browser's exact origin without a trailing slash.
+
+Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Other routes above are future contracts.
+
+### Current `.env.example` keys
 
 ```dotenv
 NODE_ENV=development
@@ -347,19 +359,15 @@ APP_URL=http://localhost:5173
 API_PORT=4000
 MONGODB_URI=mongodb://localhost:27017/snapshare?replicaSet=rs0
 REDIS_URL=redis://localhost:6379
-AWS_REGION=ap-south-1
-S3_BUCKET=replace-with-private-bucket-name
-# Prefer IAM roles in deployed environments; never commit credentials.
-# COOKIE_SECRET must be a long random value.
-COOKIE_SECRET=replace-with-strong-random-secret
-EMAIL_FROM=no-reply@example.com
+SESSION_DAYS=7
+LOG_LEVEL=info
 ```
 
-Use separate environment files for frontend and backend as the monorepo is implemented. **Never place secrets in frontend variables, source control, screenshots, or documentation.** Ensure the local MongoDB URI matches the replica-set configuration you actually deploy.
+Sessions use random opaque secrets with hashes stored server-side; a cookie-signing secret is unnecessary for this lookup design. Add S3 and email settings only when their phases are implemented. **Never place secrets in frontend variables or source control.** Ensure the MongoDB URI matches the replica-set configuration.
 
 ## Testing
 
-Planned coverage:
+Current tests cover registration/login/logout, hashed secrets, cookie flags, expiry, account isolation, origin enforcement, validation, rate limits and health. Browser smoke covers the real account flow and mobile layout. Broader planned coverage:
 
 | Level | What to verify |
 |---|---|
@@ -372,12 +380,12 @@ Planned coverage:
 | E2E | Upload → link → password → claim → download → expire/cleanup |
 | Load | API latency, simultaneous transfers, memory, queue lag |
 
-### Example intended commands
+### Current foundation checks
 
 ```bash
 pnpm test
 pnpm test:integration
-pnpm test:e2e
+pnpm test:browser
 pnpm lint
 pnpm typecheck
 ```
@@ -388,7 +396,7 @@ Record real measured numbers (for example, p95 API latency, tested concurrency, 
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| **1. Foundation** | Monorepo, React UI shell, Express API, MongoDB, Docker | ⬜ Planned |
+| **1. Foundation** | Monorepo, React UI shell, Express API, MongoDB, Docker | Implemented; Docker runtime verification pending |
 | **2. Core sharing** | Private S3 upload, snippet editor, secure share links | ⬜ Planned |
 | **3. Share security** | Passwords, 24-hour expiry, atomic one-time claim | ⬜ Planned |
 | **4. Transfer engine** | Transfer tickets, controlled streaming, failure handling | ⬜ Planned |

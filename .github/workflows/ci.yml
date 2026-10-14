@@ -1,0 +1,23 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser
+      - run: docker compose up -d --wait
+      - run: docker compose exec -T mongo mongosh --quiet --eval 'if (!db.hello().isWritablePrimary) quit(1)'
+      - run: docker compose exec -T redis redis-cli ping
+      - if: always()
+        run: docker compose down
