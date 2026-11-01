@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Phases 1-3 are implemented: private resumable uploads, safe snippets, password-protected 24-hour shares, atomic one-time claims, recoverable transfer tickets and API-streamed downloads. Files require a trusted clean scan before sharing; scanner integration is still pending. Notifications and cleanup workers are planned for Phase 4. Local tests use real MongoDB replica sets and an S3 HTTP emulator; Docker runtime, real AWS and remote CI remain unverified. See [Phase 3 usage and semantics](docs/phase-3.md), [storage setup](docs/phase-2.md) and [progress](docs/progress.md).
+> **Project status:** Phases 1-4 implement private resumable uploads, safe snippets, secure one-time sharing, durable in-app notifications, and retryable cleanup/reconciliation. Files require a trusted clean scan; scanner integration remains pending. Tests use real MongoDB/Redis and an S3 HTTP emulator; target AWS, Docker runtime and remote CI require separate verification. See [Phase 4 operations and checks](docs/phase-4.md), [share semantics](docs/phase-3.md) and [progress](docs/progress.md).
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -58,7 +58,7 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 - [ ] Configure alternate download limits.
 - [x] View, revoke, and track shares from a user dashboard.
 - [x] Show owner-only link status and claim count.
-- [ ] Deliver enabled in-app/email notifications (outbox intent exists; delivery is pending).
+- [x] Deliver idempotent in-app claim notifications; optional email webhook adapter (disabled by default).
 
 ### Advanced engineering
 
@@ -66,8 +66,8 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 - [x] Atomically claim one-time links even under concurrent requests.
 - [x] Stream protected downloads through the API without exposing reusable object URLs.
 - [x] Create transfer tickets and outbox events in the same MongoDB transaction as a successful claim.
-- [ ] Run Redis/BullMQ workers for notifications and cloud-object cleanup.
-- [ ] Recover from failed cleanup, lost jobs, and abandoned uploads via reconciliation.
+- [x] Run Redis/BullMQ workers for notifications and cloud-object cleanup.
+- [x] Recover from failed cleanup, lost jobs, and abandoned uploads via reconciliation.
 - [ ] Add rate limits, quotas, validations, audit events, and monitoring.
 - [x] Test authorization, concurrency, failure recovery, and end-to-end sharing.
 
@@ -249,7 +249,7 @@ sequenceDiagram
 
 ## API design
 
-**Implemented through Phase 3:** auth, uploads/snippets, share creation/management, atomic claims and transfers. Notification/analytics routes remain planned. See [Phase 3 API](docs/phase-3.md#api) for exact inputs and response semantics.
+**Implemented through Phase 3:** auth, uploads/snippets, share creation/management, atomic claims and transfers. Notification routes are implemented in Phase 4; analytics remains planned. See [Phase 3 API](docs/phase-3.md#api) for exact inputs and response semantics.
 
 | Method | Route | Behavior |
 |---|---|---|
@@ -280,7 +280,7 @@ Example share creation payload:
 }
 ```
 
-The server fixes expiry at 24 hours, the claim limit at one and notificationsEnabled at true. Notification delivery remains pending.
+The server fixes expiry at 24 hours, the claim limit at one and notificationsEnabled at true. In-app notification delivery uses the worker; email is optional and disabled by default.
 
 The server must resolve `sourceId` to a verified clean upload or snippet owned by the authenticated user. Never trust an arbitrary client-supplied S3 object key.
 
@@ -353,7 +353,7 @@ pnpm dev
 
 Open `http://localhost:5173`; the frontend proxies `/api` to port 4000. On PowerShell use `Copy-Item .env.example .env`. The root `.env` is read only by backend processes. `APP_URL` must match the browser's exact origin without a trailing slash.
 
-Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Share creation, claims, transfer streaming and owner management are also implemented; see [Phase 3 API](docs/phase-3.md#api). Notifications and analytics remain planned.
+Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Share creation, claims, transfer streaming and owner management are also implemented; see [Phase 3 API](docs/phase-3.md#api). Notifications and mark-read routes are implemented; analytics remains planned.
 
 ### Current `.env.example` keys
 
@@ -372,11 +372,11 @@ S3_ACCESS_KEY_ID=local-development
 S3_SECRET_ACCESS_KEY=local-development
 ```
 
-Sessions use random opaque secrets with hashes stored server-side; a cookie-signing secret is unnecessary for this lookup design. S3 example credentials are for the loopback development emulator only. Use an IAM role and private AWS bucket for production; email settings arrive in a later phase. **Never place secrets in frontend variables or source control.** Ensure the MongoDB URI matches the replica-set configuration.
+Sessions use random opaque secrets with hashes stored server-side; a cookie-signing secret is unnecessary for this lookup design. S3 example credentials are for the loopback development emulator only. Use an IAM role and private AWS bucket for production; email delivery is disabled by default; optional webhook settings are documented in Phase 4. **Never place secrets in frontend variables or source control.** Ensure the MongoDB URI matches the replica-set configuration.
 
 ## Testing
 
-Current tests cover authentication plus upload ownership, part verification, quota races, completion recovery, abort retries and snippet byte limits. Browser checks cover account flows and HTTP multipart resume, byte verification, anonymous access denial and inert snippet rendering. Phase 3 adds 20-way claim concurrency, atomic outbox rollback, ticket replay/expiry and real browser downloads with lost-response recovery. Broader planned coverage:
+Current tests cover authentication plus upload ownership, part verification, quota races, completion recovery, abort retries and snippet byte limits. Browser checks cover account flows and HTTP multipart resume, byte verification, anonymous access denial and inert snippet rendering. Phase 3 adds 20-way claim concurrency, atomic outbox rollback, ticket replay/expiry and real browser downloads with lost-response recovery. Phase 4 adds duplicate delivery, deletion/dispatch failure, shared-reference protection, lease recovery, quota release and notification ownership tests. Broader planned coverage:
 
 | Level | What to verify |
 |---|---|
@@ -395,6 +395,8 @@ Current tests cover authentication plus upload ownership, part verification, quo
 pnpm test
 pnpm test:integration
 pnpm test:browser
+pnpm test:worker
+pnpm test:browser:workspace
 pnpm lint
 pnpm typecheck
 ```
@@ -408,7 +410,7 @@ Record real measured numbers (for example, p95 API latency, tested concurrency, 
 | **1. Foundation** | Monorepo, React UI shell, Express API, MongoDB, Docker | Implemented; Docker runtime verification pending |
 | **2. Private storage and snippets** | Multipart upload/resume/abort, quarantine, safe snippet editor | Implemented; real AWS/Compose verification pending |
 | **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Implemented; trusted scanner integration and infrastructure verification pending |
-| **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Planned |
+| **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Implemented and locally verified; target infrastructure verification pending |
 | **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Planned |
 | **6. Deployment and operations** | Deployment, monitoring, runbooks, portfolio documentation | Planned |
 

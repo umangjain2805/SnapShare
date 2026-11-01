@@ -19,6 +19,7 @@ export function createAssetService(storage: Storage) {
   const view = (upload: Upload, parts: Awaited<ReturnType<Storage['parts']>> = []) => ({
     id: upload.id as string, filename: upload.filename, size: upload.size, mimeType: upload.mimeType, fingerprint: upload.fingerprint,
     status: upload.status, scanStatus: upload.scanStatus, expiresAt: upload.expiresAt.toISOString(), partSize: PART_SIZE, parts,
+    cleanupStatus: upload.cleanupStatus, cleanupFailed: Boolean(upload.cleanupFailedAt),
   });
   async function abort(ownerId: string, id: string) {
     const upload = await owned(ownerId, id);

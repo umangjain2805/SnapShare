@@ -1,9 +1,8 @@
 import type { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
 import type { Logger } from 'pino';
-export class AppError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
+import { AppError } from '@snapshare/backend/errors';
+export { AppError };
 export function errorHandler(logger: Logger): ErrorRequestHandler {
   return (error: unknown, _req, res, _next) => {
     if (error instanceof ZodError) { res.status(400).json({ error: 'Invalid request', fields: error.issues.map(i => i.path.join('.')) }); return; }

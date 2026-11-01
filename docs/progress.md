@@ -1,5 +1,47 @@
 # SnapShare progress
 
+## Phase 4 - implemented and locally verified; target infrastructure pending
+
+- [x] Shared compiled backend package for API/worker models, environment validation, storage and cleanup transactions; compatibility imports preserved.
+- [x] Separate BullMQ notification/cleanup consumers, stable job IDs, exponential retry batches and bounded job retention.
+- [x] Durable outbox dispatch with enqueue/failure/processing state and periodic recovery after worker/Redis outages.
+- [x] Unique event-backed in-app claim notifications, owner-scoped paginated API, unread/read controls and dashboard UI.
+- [x] Optional timeout-bounded HTTPS email webhook adapter with event idempotency keys and delivery leases; disabled by default.
+- [x] Atomic asset locks serialize new share/claim references against deletion; cleanup waits for every reference and transfer window.
+- [x] Expired/stranded upload recovery, exact-key multipart discovery/abort, cloud deletion and absence verification.
+- [x] Failed deletion preserves keys/quota/metadata; successful deletion releases quota once and enables purgeAfter TTL retention.
+- [x] Reconciliation for pending events, missed jobs, expired cleanup leases and unresolved transfer state; structured count/lag logs.
+- [x] Integration failure tests, real Redis/BullMQ restart/outage checks, compiled worker process and browser notification/cleanup flow.
+- [x] README, run commands, retention/recovery policies, CI checks and Phase 5 prerequisites updated.
+- [ ] Verify target AWS IAM, non-versioned bucket and lifecycle enforcement; local storage tests use Moto.
+- [ ] Verify persistent Docker Compose runtime and the remote workflow; neither is claimed locally.
+- [ ] Integrate a trusted scanner before production file sharing; configure real email only if needed.
+
+### Phase 4 verification evidence
+
+Executed locally on Windows with Node 22.19.0, pnpm 12.11.2, Moto 5.2.5, Chrome and Redis 7.4.8 (community Windows build; downloaded release archive SHA-256 verified):
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Passed across seven workspaces |
+| `pnpm lint` | Passed |
+| `pnpm typecheck` | Passed, including all tests |
+| `pnpm test` | 41 passed: 3 unit, 8 auth, 9 asset, 14 share and 7 worker integration |
+| `pnpm build` | Passed for shared packages, API, worker and web; existing third-party Zod/Rollup annotation warnings |
+| `pnpm test:worker` | Passed with real Redis/BullMQ and MongoDB: duplicate handling, restart recovery, exponential deletion retry, retention/quota assertions, Redis outage/lost queue recovery and compiled separate worker process |
+| `pnpm test:browser` with Chrome | Passed: original authentication/session/mobile flow |
+| `pnpm test:browser:workspace` with Chrome and real Redis | Passed: multipart resume, shares/downloads, worker-created notices, mark-read, verified S3-emulator deletion after fixture transfer deadlines, cleanup status and mobile overflow |
+| `git diff --check` | Passed |
+| Real AWS / Docker runtime / real email / remote CI | Not executed; no success claimed |
+
+Desktop notification and final mobile/cleanup screenshots were visually inspected under ignored `test-results/`. The Redis harness uses a real process, not a mock; the S3 backend is an HTTP emulator. File clean scan outcomes and elapsed transfer windows are explicit test fixtures. Native runtime setup initially hit a download timeout, then succeeded using verified ranged downloads; the runtime checks above were subsequently executed successfully.
+
+### Phase 4 files and decisions
+
+`packages/backend` now contains the shared environment/database/storage/error code, auth/asset/share/notification models, initialization and cleanup transaction helpers. Prior API paths re-export the shared implementations. `apps/worker/src/{engine,runtime,email,index}.ts` implement processing, dispatch, reconciliation, optional delivery and entrypoint lifecycle. `apps/api/src/modules/notifications/{repository,service,controller,routes}.ts` and `Notifications.tsx` provide owner access and UI; share/workspace modules add cleanup locks and status indicators. Contracts, manifests, lockfile, environment example, workspace build policy and CI support the new package and tests. Worker tests are in `tests/integration/workers.test.ts`, `tests/worker/runtime.smoke.ts`, `tests/helpers/redis.ts`; existing browser coverage now uses the real worker/queue. Full setup, API, permissions, failure behavior, manual checks and Phase 5 prerequisites are in [phase-4.md](phase-4.md).
+
+The MongoDB outbox remains authoritative when Redis loses jobs. Database uniqueness provides in-app idempotency after queue history is removed. Email requires provider-side idempotency across acceptance/acknowledgement failures. Cleanup transitions block new references and respect all active share/transfer windows; old mixed-case source IDs are protected. No expiry-based metadata TTL is added. Only verified asset deletion assigns purge deadlines, and failed deletion retains object keys. Unshared snippets are retained; unshared files expire with a ten-minute grace. Production scanner integration, private AWS verification, distributed abuse controls and deployment remain future work.
+
 ## Phase 3 - implemented; infrastructure and scanner integration pending
 
 - [x] Owner-scoped secure share creation, cursor-paginated listing and idempotent revocation.
@@ -129,7 +171,7 @@ Rate limiting is process-local, proxy trust stays disabled, and the Compose netw
 
 - [x] Phase 2: private multipart storage and safe code snippets, locally verified with an S3 HTTP emulator. Real AWS and Compose checks remain pending.
 - [x] Phase 3: secure shares, atomic claims, transfer tickets, controlled streaming and pending outbox intent; scanner/infrastructure integration remains pending.
-- [ ] Phase 4: durable notifications, cleanup and reconciliation.
+- [x] Phase 4: durable notifications, cleanup and reconciliation, locally verified with real Redis/BullMQ and an S3 emulator.
 - [ ] Phase 5: full product UI, analytics, hardening and measured performance.
 - [ ] Phase 6: deployment and operations documentation.
 

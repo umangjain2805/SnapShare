@@ -11,6 +11,7 @@ import { authRoutes } from './modules/auth/routes.js';
 import { createStorage, type Storage } from './infrastructure/storage.js';
 import { assetRoutes } from './modules/assets/routes.js';
 import { shareRoutes } from './modules/shares/routes.js';
+import { notificationRoutes } from './modules/notifications/routes.js';
 export function createApp(env: Env, storage: Storage = createStorage(env)) {
   const app = express();
   const logger = createLogger(env.LOG_LEVEL);
@@ -44,6 +45,7 @@ export function createApp(env: Env, storage: Storage = createStorage(env)) {
   app.use('/api/auth', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); }, authRoutes(env));
   app.use('/api', assetRoutes(env, storage));
   app.use('/api', shareRoutes(env, storage));
+  app.use('/api', notificationRoutes(env));
   app.use((_req, _res, next) => next(new AppError(404, 'Route not found')));
   app.use(errorHandler(logger));
   return app;

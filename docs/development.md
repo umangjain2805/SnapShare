@@ -1,5 +1,7 @@
 # Phase 1 development
 
+Current worker/notification/cleanup setup is in [Phase 4](phase-4.md).
+
 For the current upload/snippet setup, use [Phase 2 development](phase-2.md). For secure sharing, see [Phase 3 usage](phase-3.md). This document records the original authentication foundation.
 
 ## Setup

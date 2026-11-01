@@ -7,16 +7,18 @@
   },
   "scripts": {
     "storage:setup": "pnpm --filter api storage:setup",
-    "test:browser:workspace": "pnpm --filter @snapshare/contracts build && tsx tests/browser/workspace.smoke.ts",
-    "dev": "pnpm --filter @snapshare/contracts build && pnpm -r --parallel dev",
+    "test:browser:workspace": "pnpm prepare:shared && tsx tests/browser/workspace.smoke.ts",
+    "dev": "pnpm prepare:shared && pnpm -r --parallel dev",
     "lint": "eslint .",
-    "typecheck": "pnpm --filter @snapshare/contracts build && pnpm -r typecheck && tsc -p tests/tsconfig.json",
+    "typecheck": "pnpm prepare:shared && pnpm -r typecheck && tsc -p tests/tsconfig.json",
     "build": "pnpm -r build",
-    "test": "pnpm --filter @snapshare/contracts build && vitest run",
-    "test:integration": "pnpm --filter @snapshare/contracts build && vitest run tests/integration",
+    "test": "pnpm prepare:shared && vitest run",
+    "test:integration": "pnpm prepare:shared && vitest run tests/integration",
     "services:up": "docker compose up -d --wait",
     "services:down": "docker compose down",
-    "test:browser": "pnpm --filter @snapshare/contracts build && tsx tests/browser/auth.smoke.ts"
+    "test:browser": "pnpm prepare:shared && tsx tests/browser/auth.smoke.ts",
+    "prepare:shared": "pnpm --filter @snapshare/contracts build && pnpm --filter @snapshare/backend build",
+    "test:worker": "pnpm prepare:shared && pnpm --filter worker build && tsx tests/worker/runtime.smoke.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

@@ -30,16 +30,16 @@ export const snippetInputSchema = z.object({
 }).strict();
 export type UploadInput = z.infer<typeof uploadInputSchema>;
 export type SnippetInput = z.infer<typeof snippetInputSchema>;
-export type UploadView = UploadInput & { id: string; status: string; scanStatus: string; expiresAt: string; partSize: number; parts: { partNumber: number; size: number; etag: string }[] };
+export type UploadView = UploadInput & { id: string; status: string; scanStatus: string; cleanupStatus?: string; cleanupFailed?: boolean; expiresAt: string; partSize: number; parts: { partNumber: number; size: number; etag: string }[] };
 export type SnippetView = SnippetInput & { id: string };
 
 export const opaqueTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 export const createShareSchema = z.object({
-  sourceType: z.enum(['upload', 'snippet']), sourceId: z.string().regex(/^[a-f0-9]{24}$/i),
+  sourceType: z.enum(['upload', 'snippet']), sourceId: z.string().regex(/^[a-f0-9]{24}$/i).toLowerCase(),
   password: z.string().min(12).max(128),
 }).strict();
 export const claimShareSchema = z.object({ password: z.string().min(1).max(128), idempotencyKey: opaqueTokenSchema }).strict();
 export type CreateShareInput = z.infer<typeof createShareSchema>;
 export type ClaimShareInput = z.infer<typeof claimShareSchema>;
-export type ShareView = { id: string; sourceType: 'upload' | 'snippet'; sourceId: string; title: string; status: string; expiresAt: string; downloadCount: number; maxDownloads: number; notificationsEnabled: boolean };
+export type ShareView = { id: string; sourceType: 'upload' | 'snippet'; sourceId: string; title: string; status: string; expiresAt: string; downloadCount: number; maxDownloads: number; notificationsEnabled: boolean; cleanupStatus?: string };
 export type ClaimView = { ticket: string; startBefore: string; filename: string; size: number; sourceType: 'upload' | 'snippet' };

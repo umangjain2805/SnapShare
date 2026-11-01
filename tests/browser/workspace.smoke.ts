@@ -11,17 +11,26 @@ import { User, Session } from '../../apps/api/src/modules/auth/model.js';
 import { UploadSession, Snippet, AssetQuota } from '../../apps/api/src/modules/assets/model.js';
 import { Share, TransferTicket, OutboxEvent } from '../../apps/api/src/modules/shares/model.js';
 import { startStorage } from '../helpers/storage.js';
+import { startRedis } from '../helpers/redis.js';
+import { createRuntime } from '../../apps/worker/src/runtime.js';
+import { createStorage } from '../../packages/backend/dist/storage.js';
+import { Notification } from '../../packages/backend/dist/index.js';
 
 const storage = await startStorage();
+let redis: Awaited<ReturnType<typeof startRedis>> | undefined;
+let worker: ReturnType<typeof createRuntime> | undefined;
 let mongo: MongoMemoryReplSet | undefined;
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let api: ReturnType<ReturnType<typeof createApp>['listen']> | undefined;
 let vite: Awaited<ReturnType<typeof createServer>> | undefined;
 try {
+  redis = await startRedis();
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await connectDatabase(mongo.getUri());
-  await Promise.all([User.init(), Session.init(), UploadSession.init(), Snippet.init(), AssetQuota.init(), Share.init(), TransferTicket.init(), OutboxEvent.init()]);
+  await Promise.all([User.init(), Session.init(), UploadSession.init(), Snippet.init(), AssetQuota.init(), Share.init(), TransferTicket.init(), OutboxEvent.init(), Notification.init()]);
   const env = parseEnv({ NODE_ENV: 'test', APP_URL: 'http://localhost:5173', MONGODB_URI: mongo.getUri(), LOG_LEVEL: 'silent', S3_ENDPOINT: storage.endpoint, S3_BUCKET: storage.bucket, S3_ACCESS_KEY_ID: storage.credentials.accessKeyId, S3_SECRET_ACCESS_KEY: storage.credentials.secretAccessKey });
+  const workerStorage = createStorage(env);
+  worker = createRuntime({ ...env, REDIS_URL: redis.url, WORKER_INTERVAL_MS: 1000 }, workerStorage); await worker.start();
   api = createApp(env).listen(0, '127.0.0.1');
   await new Promise<void>(resolve => api!.once('listening', resolve));
   const address = api.address(); if (!address || typeof address === 'string') throw new Error('API did not bind');
@@ -126,14 +135,29 @@ try {
   const snippetDownload = recipient.waitForEvent('download'); await recipient.getByRole('link', { name: 'Download once', exact: true }).click();
   const snippetBytes = await snippetDownload; expect(await readFile((await snippetBytes.path())!, 'utf8')).toBe(malicious);
   expect(await recipient.evaluate(() => 'snapSharePwned' in window)).toBe(false);
+  await expect.poll(() => Notification.countDocuments()).toBe(2);
+  await page.reload();
+  await expect(page.getByText('2 unread.', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Mark read', exact: true }).first().click();
+  await expect(page.getByText('1 unread.', { exact: false })).toBeVisible();
+  await page.screenshot({ path: 'test-results/notifications-desktop.png', fullPage: true });
+  // Advance fixture transfer windows; production waits for the real persisted deadlines.
+  await Share.updateMany({}, { transferUntil: new Date(Date.now() - 1) });
+  await worker.engine.reconcile();
+  await expect.poll(async () => (await UploadSession.findById(record!._id))?.cleanupStatus, { timeout: 20000 }).toBe('deleted');
+  expect(await workerStorage.head(record!.objectKey)).toBeNull();
+  await expect.poll(async () => (await Share.findOne({ sourceType: 'upload' }))?.cleanupStatus).toBe('complete');
+  await page.reload();
+  await expect(page.getByText(/Cleanup complete/).first()).toBeVisible();
   await page.screenshot({ path: 'test-results/share-owner-desktop.png', fullPage: true });
   await recipientContext.close();
   await mkdir('test-results', { recursive: true }); await page.screenshot({ path: 'test-results/workspace-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: 'test-results/workspace-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]);
-  process.stdout.write('Workspace/share browser passed: multipart resume, private storage, scan gate, share creation, hidden metadata, wrong password, lost claim response recovery, one-time streamed file/snippet downloads, byte verification, revocation, inert HTML and mobile layout.\n');
+  process.stdout.write('Workspace/share/worker browser passed: multipart resume, private storage, scan gate, shares and streamed downloads, real BullMQ notifications, mark-read UI, verified S3 cleanup after transfer windows and mobile layout.\n');
 } finally {
   await browser?.close(); await vite?.close();
   if (api) await new Promise<void>(resolve => api!.close(() => resolve()));
+  await worker?.close(); await redis?.stop();
   await disconnectDatabase(); await mongo?.stop(); storage.client.destroy(); await storage.stop();
 }

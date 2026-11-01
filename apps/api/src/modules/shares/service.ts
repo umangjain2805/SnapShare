@@ -33,7 +33,7 @@ export function createShareService(storage: Storage) {
     async list(ownerId: string, before?: string) {
       const records = await repo.list(ownerId, before);
       const shares: ShareView[] = records.slice(0, 50).map(s => ({ id: s.id as string, sourceType: s.sourceType as 'upload' | 'snippet', sourceId: s.sourceId, title: s.title, status: s.status === 'active' && s.expiresAt.getTime() <= Date.now() ? 'expired' : s.status, expiresAt: s.expiresAt.toISOString(), downloadCount: s.downloadCount, maxDownloads: s.maxDownloads, notificationsEnabled: s.notificationsEnabled }));
-      return { shares, nextCursor: records.length > 50 ? shares.at(-1)!.id : null };
+      return { shares: shares.map((share, i) => ({ ...share, cleanupStatus: records[i]!.cleanupStatus })), nextCursor: records.length > 50 ? shares.at(-1)!.id : null };
     },
     async revoke(ownerId: string, id: string) {
       if (!await repo.revoke(ownerId, id)) throw new AppError(404, 'Share not found');

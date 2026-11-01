@@ -5,3 +5,4 @@ allowBuilds:
   argon2: true
   esbuild: true
   mongodb-memory-server: false
+  msgpackr-extract: false

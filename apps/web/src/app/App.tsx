@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { useSession } from '../features/auth/use-session';
 import { Workspace } from '../features/workspace/Workspace';
 import { ShareManager } from '../features/shares/ShareManager';
+import { Notifications } from '../features/shares/Notifications';
 import { PublicShare } from '../features/shares/PublicShare';
 
 function Brand() { return <Link to="/" className="brand"><span className="brand-icon"><Zap size={22} fill="currentColor" /></span>SnapShare<span className="brand-tag">workspace</span></Link>; }
@@ -50,6 +51,6 @@ function Dashboard() {
   if (session.isError) return <Status error retry={() => void session.refetch()} />;
   if (!session.data) return <Navigate to="/signin" replace />;
   return <div className="dashboard"><header className="topbar"><Brand /><div className="account"><span className="account-email">{session.data.email}</span><Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut size={15}/>{logout.isPending ? 'Signing out?' : 'Sign out'}</Button></div></header><main className="workspace"><div className="workspace-label"><span className="dot"/> YOUR WORKSPACE</div><div className="welcome"><div><h1>Hello, {session.data.name.split(' ')[0]}.</h1><p className="muted">A fresh space for the things you?ll share.</p></div><span className="pill"><Check size={14}/> ACCOUNT READY</span></div>{logout.error && <p className="error" role="alert">{logout.error.message}</p>}
-  <Workspace ownerId={session.data.id} /><ShareManager ownerId={session.data.id} /><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
+  <Workspace ownerId={session.data.id} /><ShareManager ownerId={session.data.id} /><Notifications ownerId={session.data.id} /><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
 }
 export function App() { return <Routes><Route path="/" element={<Navigate to="/dashboard" replace/>}/><Route path="/signin" element={<AuthPage key="signin"/>}/><Route path="/signup" element={<AuthPage key="signup" signup/>}/><Route path="/dashboard" element={<Dashboard/>}/><Route path="/s/:token" element={<PublicShare/>}/><Route path="*" element={<main className="status"><h1>Page not found</h1><Link to="/">Return to your workspace</Link></main>}/></Routes>; }

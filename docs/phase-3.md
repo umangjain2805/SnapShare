@@ -1,5 +1,7 @@
 # Phase 3: secure one-time shares
 
+This is the Phase 3 implementation record. Worker processing, notifications, cleanup and retention now follow [Phase 4](phase-4.md).
+
 Phase 3 implements password-protected, 24-hour shares, one committed claim, recoverable claim responses, single-use transfer tickets, controlled API streaming, owner listing/revocation and durable pending outbox records. Notification delivery, cleanup workers and reconciliation remain Phase 4 work.
 
 ## Run and try it
