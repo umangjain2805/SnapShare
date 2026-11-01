@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'vite';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { createApp } from '../../apps/api/src/app.js';
@@ -9,6 +9,7 @@ import { parseEnv } from '../../apps/api/src/config/env.js';
 import { connectDatabase, disconnectDatabase } from '../../apps/api/src/infrastructure/database.js';
 import { User, Session } from '../../apps/api/src/modules/auth/model.js';
 import { UploadSession, Snippet, AssetQuota } from '../../apps/api/src/modules/assets/model.js';
+import { Share, TransferTicket, OutboxEvent } from '../../apps/api/src/modules/shares/model.js';
 import { startStorage } from '../helpers/storage.js';
 
 const storage = await startStorage();
@@ -19,7 +20,7 @@ let vite: Awaited<ReturnType<typeof createServer>> | undefined;
 try {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await connectDatabase(mongo.getUri());
-  await Promise.all([User.init(), Session.init(), UploadSession.init(), Snippet.init(), AssetQuota.init()]);
+  await Promise.all([User.init(), Session.init(), UploadSession.init(), Snippet.init(), AssetQuota.init(), Share.init(), TransferTicket.init(), OutboxEvent.init()]);
   const env = parseEnv({ NODE_ENV: 'test', APP_URL: 'http://localhost:5173', MONGODB_URI: mongo.getUri(), LOG_LEVEL: 'silent', S3_ENDPOINT: storage.endpoint, S3_BUCKET: storage.bucket, S3_ACCESS_KEY_ID: storage.credentials.accessKeyId, S3_SECRET_ACCESS_KEY: storage.credentials.secretAccessKey });
   api = createApp(env).listen(0, '127.0.0.1');
   await new Promise<void>(resolve => api!.once('listening', resolve));
@@ -68,10 +69,69 @@ try {
   await expect(page.locator('details .code-preview')).toHaveText(malicious);
   expect(await page.locator('.code-preview script, .code-preview img').count()).toBe(0);
   expect(await page.evaluate(() => 'snapSharePwned' in window)).toBe(false);
+  // A pending file cannot be selected. The fixture then simulates a trusted scanner result.
+  expect(await page.locator('#share-source option').allTextContents()).not.toContain('File: resumable.txt');
+  await UploadSession.updateOne({ _id: record!.id }, { scanStatus: 'clean' });
+  await page.reload();
+  await expect(page.getByText('Ready to share', { exact: false })).toBeVisible();
+  const sharePassword = 'browser-share-passphrase';
+  await page.getByLabel('Item to share', { exact: true }).selectOption(`upload:${record!.id}`);
+  await page.getByLabel('Share password', { exact: true }).fill(sharePassword);
+  await page.getByRole('button', { name: 'Create share', exact: true }).click();
+  const shareLink = page.getByLabel('New share link', { exact: true }); await expect(shareLink).toBeVisible();
+  const url = await shareLink.inputValue();
+  const recipientContext = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 960 } });
+  const recipient = await recipientContext.newPage(); recipient.setDefaultTimeout(15000);
+  recipient.on('pageerror', error => errors.push(error.message));
+  let directStorageRequests = 0; recipient.on('request', req => { if (req.url().startsWith(storage.endpoint)) directStorageRequests++; });
+  await recipient.goto(url);
+  await expect(recipient.getByRole('heading', { name: 'A moment, shared with you.' })).toBeVisible();
+  expect(await recipient.getByText('resumable.txt', { exact: true }).count()).toBe(0);
+  await recipient.getByLabel('Share password', { exact: true }).fill('wrong-password'); await recipient.getByRole('button', { name: 'Claim share', exact: true }).click();
+  await expect(recipient.getByRole('alert')).toHaveText('Unable to authorize this share');
+  let responseLost = false;
+  await recipient.route('**/api/shares/*/claim', async route => {
+    if (!responseLost) { const response = await route.fetch(); expect(response.status()).toBe(200); responseLost = true; await route.abort('failed'); }
+    else await route.continue();
+  });
+  await recipient.getByLabel('Share password', { exact: true }).fill(sharePassword); await recipient.getByRole('button', { name: 'Claim share', exact: true }).click();
+  await expect(recipient.getByRole('alert')).toBeVisible(); expect(responseLost).toBe(true);
+  expect(await TransferTicket.countDocuments()).toBe(1); expect(await OutboxEvent.countDocuments()).toBe(1);
+  await recipient.reload(); await recipient.getByLabel('Share password', { exact: true }).fill(sharePassword);
+  const recoveryResponse = recipient.waitForResponse(response => response.url().includes('/claim') && response.status() === 200);
+  await recipient.getByRole('button', { name: 'Claim share', exact: true }).click();
+  const ticket = (await (await recoveryResponse).json()).ticket as string;
+  await expect(recipient.getByRole('heading', { name: 'resumable.txt', exact: true })).toBeVisible();
+  expect(await TransferTicket.countDocuments()).toBe(1); expect(await OutboxEvent.countDocuments()).toBe(1);
+  await mkdir('test-results', { recursive: true });
+  await recipient.screenshot({ path: 'test-results/share-public-desktop.png', fullPage: true });
+  const downloaded = recipient.waitForEvent('download'); await recipient.getByRole('link', { name: 'Download once', exact: true }).click();
+  const download = await downloaded; expect(download.suggestedFilename()).toBe('resumable.txt');
+  const localPath = await download.path(); expect(localPath).not.toBeNull();
+  expect(createHash('sha256').update(await readFile(localPath!)).digest('hex')).toBe(createHash('sha256').update(buffer).digest('hex'));
+  expect((await recipient.request.get(`http://localhost:5173/api/transfers/${ticket}`)).status()).toBe(410); expect(directStorageRequests).toBe(0);
+  await recipient.setViewportSize({ width: 390, height: 844 }); await recipient.screenshot({ path: 'test-results/share-public-mobile.png', fullPage: true });
+  expect(await recipient.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.reload();
+  await expect(page.getByText(/claimed.*1 \/ 1 claims/)).toBeVisible();
+  await page.getByRole('button', { name: 'Revoke resumable.txt', exact: true }).click();
+  await expect(page.getByText(/revoked.*1 \/ 1 claims/)).toBeVisible();
+  // A snippet share is also delivered as inert attachment bytes.
+  const snippetRecord = await Snippet.findOne();
+  await page.getByLabel('Item to share', { exact: true }).selectOption(`snippet:${snippetRecord!.id}`);
+  await page.getByLabel('Share password', { exact: true }).fill(sharePassword); await page.getByRole('button', { name: 'Create share', exact: true }).click();
+  await expect(page.getByLabel('New share link', { exact: true })).toBeVisible();
+  await recipient.goto(await page.getByLabel('New share link', { exact: true }).inputValue());
+  await recipient.getByLabel('Share password', { exact: true }).fill(sharePassword); await recipient.getByRole('button', { name: 'Claim share', exact: true }).click();
+  const snippetDownload = recipient.waitForEvent('download'); await recipient.getByRole('link', { name: 'Download once', exact: true }).click();
+  const snippetBytes = await snippetDownload; expect(await readFile((await snippetBytes.path())!, 'utf8')).toBe(malicious);
+  expect(await recipient.evaluate(() => 'snapSharePwned' in window)).toBe(false);
+  await page.screenshot({ path: 'test-results/share-owner-desktop.png', fullPage: true });
+  await recipientContext.close();
   await mkdir('test-results', { recursive: true }); await page.screenshot({ path: 'test-results/workspace-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: 'test-results/workspace-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]);
-  process.stdout.write('Workspace browser passed: real HTTP multipart upload, interruption, reload, file identity, skipped existing part, private object, byte verification, inert snippet, mobile layout.\n');
+  process.stdout.write('Workspace/share browser passed: multipart resume, private storage, scan gate, share creation, hidden metadata, wrong password, lost claim response recovery, one-time streamed file/snippet downloads, byte verification, revocation, inert HTML and mobile layout.\n');
 } finally {
   await browser?.close(); await vite?.close();
   if (api) await new Promise<void>(resolve => api!.close(() => resolve()));

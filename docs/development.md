@@ -1,6 +1,6 @@
 # Phase 1 development
 
-For the current upload/snippet setup, use [Phase 2 development](phase-2.md). This document records the original authentication foundation.
+For the current upload/snippet setup, use [Phase 2 development](phase-2.md). For secure sharing, see [Phase 3 usage](phase-3.md). This document records the original authentication foundation.
 
 ## Setup
 

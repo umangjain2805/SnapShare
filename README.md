@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Phases 1 and 2 are implemented: account sessions, private multipart uploads with resume/abort, and safe code snippets. Files remain quarantined pending a trusted scanner. Public shares and downloads are planned for Phase 3. Local tests use an S3 HTTP emulator; persistent Docker services and real AWS storage still need verification. See [Phase 2 setup and recovery](docs/phase-2.md) and [progress](docs/progress.md).
+> **Project status:** Phases 1-3 are implemented: private resumable uploads, safe snippets, password-protected 24-hour shares, atomic one-time claims, recoverable transfer tickets and API-streamed downloads. Files require a trusted clean scan before sharing; scanner integration is still pending. Notifications and cleanup workers are planned for Phase 4. Local tests use real MongoDB replica sets and an S3 HTTP emulator; Docker runtime, real AWS and remote CI remain unverified. See [Phase 3 usage and semantics](docs/phase-3.md), [storage setup](docs/phase-2.md) and [progress](docs/progress.md).
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -50,23 +50,26 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 
 - [x] Upload supported files (documents, images, archives, etc.) to **private S3 storage**.
 - [x] Create syntax-highlighted code snippets with a copy-friendly viewer.
-- [ ] Generate high-entropy, unguessable share URLs.
-- [ ] Choose expiration presets (1 hour, **24 hours**, 7 days).
-- [ ] Protect links with a password (Argon2id hashing).
-- [ ] Support a **single-use claim** or configurable download limits.
-- [ ] View, revoke, and track shares from a user dashboard.
-- [ ] Show link status and optional in-app/email notifications.
+- [x] Generate high-entropy, unguessable share URLs.
+- [x] Enforce the default **24-hour** expiry.
+- [ ] Choose alternate expiration presets (1 hour or 7 days).
+- [x] Protect links with a required password (Argon2id hashing).
+- [x] Support a **single-use claim**, with one committed claim per share.
+- [ ] Configure alternate download limits.
+- [x] View, revoke, and track shares from a user dashboard.
+- [x] Show owner-only link status and claim count.
+- [ ] Deliver enabled in-app/email notifications (outbox intent exists; delivery is pending).
 
 ### Advanced engineering
 
 - [x] Upload large files directly to S3 with **multipart uploads** and retry/resume support.
-- [ ] Atomically claim one-time links even under concurrent requests.
-- [ ] Stream protected downloads through the API without exposing reusable object URLs.
-- [ ] Create transfer tickets and outbox events in the same MongoDB transaction as a successful claim.
+- [x] Atomically claim one-time links even under concurrent requests.
+- [x] Stream protected downloads through the API without exposing reusable object URLs.
+- [x] Create transfer tickets and outbox events in the same MongoDB transaction as a successful claim.
 - [ ] Run Redis/BullMQ workers for notifications and cloud-object cleanup.
 - [ ] Recover from failed cleanup, lost jobs, and abandoned uploads via reconciliation.
 - [ ] Add rate limits, quotas, validations, audit events, and monitoring.
-- [ ] Test authorization, concurrency, failure recovery, and end-to-end sharing.
+- [x] Test authorization, concurrency, failure recovery, and end-to-end sharing.
 
 ## Technology stack
 
@@ -196,7 +199,7 @@ db.notifications.createIndex({ sourceEventId: 1 }, { unique: true });
 3. Client requests signed URLs for individual parts, then uploads parts **directly to S3**.
 4. Server lists storage-confirmed parts and ETags; the browser skips completed parts and can resume after reselecting the original file.
 5. Client calls `POST /api/uploads/:id/complete`; API verifies session ownership, parts, and resulting object.
-6. A verified upload enters quarantine pending malware scanning. Owners can abort unfinished uploads. Automatic reconciliation and share creation remain future phases.
+6. A verified upload enters quarantine pending malware scanning. A trusted clean scan is required before file share creation. Owners can abort unfinished uploads; automatic reconciliation remains Phase 4 work.
 
 ### B. Secure share creation
 
@@ -246,7 +249,7 @@ sequenceDiagram
 
 ## API design
 
-**Draft API contract; adjust payloads as implementation evolves.**
+**Implemented through Phase 3:** auth, uploads/snippets, share creation/management, atomic claims and transfers. Notification/analytics routes remain planned. See [Phase 3 API](docs/phase-3.md#api) for exact inputs and response semantics.
 
 | Method | Route | Behavior |
 |---|---|---|
@@ -271,15 +274,15 @@ Example share creation payload:
 
 ```json
 {
-  "uploadId": "verified-upload-session-id",
-  "password": "choose-a-strong-password",
-  "expiresInHours": 24,
-  "maxDownloads": 1,
-  "notificationsEnabled": true
+  "sourceType": "snippet",
+  "sourceId": "24-character-owned-snippet-id",
+  "password": "choose-a-strong-password"
 }
 ```
 
-The server must resolve `uploadId` to an upload verified and owned by the authenticated user. Never trust an arbitrary client-supplied S3 object key.
+The server fixes expiry at 24 hours, the claim limit at one and notificationsEnabled at true. Notification delivery remains pending.
+
+The server must resolve `sourceId` to a verified clean upload or snippet owned by the authenticated user. Never trust an arbitrary client-supplied S3 object key.
 
 ## Security and concurrency
 
@@ -330,7 +333,7 @@ Implement a conditional MongoDB `findOneAndUpdate` inside a transaction that als
 
 ## Local development
 
-> Auth, uploads and snippets are runnable. Follow [Phase 2 development instructions](docs/phase-2.md) for storage setup, recovery policy, API details and known limitations. Docker service runtime remains unverified locally.
+> Auth, uploads/snippets and secure shares are runnable. Follow [storage setup](docs/phase-2.md) and [share usage](docs/phase-3.md). Snippet shares work immediately; file shares require a trusted clean scan result. Docker service runtime remains unverified locally.
 
 ### Prerequisites
 
@@ -350,7 +353,7 @@ pnpm dev
 
 Open `http://localhost:5173`; the frontend proxies `/api` to port 4000. On PowerShell use `Copy-Item .env.example .env`. The root `.env` is read only by backend processes. `APP_URL` must match the browser's exact origin without a trailing slash.
 
-Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Shares, transfers, notifications and analytics remain future contracts.
+Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Share creation, claims, transfer streaming and owner management are also implemented; see [Phase 3 API](docs/phase-3.md#api). Notifications and analytics remain planned.
 
 ### Current `.env.example` keys
 
@@ -373,7 +376,7 @@ Sessions use random opaque secrets with hashes stored server-side; a cookie-sign
 
 ## Testing
 
-Current tests cover authentication plus upload ownership, part verification, quota races, completion recovery, abort retries and snippet byte limits. Browser checks cover account flows and HTTP multipart resume, byte verification, anonymous access denial and inert snippet rendering. Broader planned coverage:
+Current tests cover authentication plus upload ownership, part verification, quota races, completion recovery, abort retries and snippet byte limits. Browser checks cover account flows and HTTP multipart resume, byte verification, anonymous access denial and inert snippet rendering. Phase 3 adds 20-way claim concurrency, atomic outbox rollback, ticket replay/expiry and real browser downloads with lost-response recovery. Broader planned coverage:
 
 | Level | What to verify |
 |---|---|
@@ -404,7 +407,7 @@ Record real measured numbers (for example, p95 API latency, tested concurrency, 
 |---|---|---|
 | **1. Foundation** | Monorepo, React UI shell, Express API, MongoDB, Docker | Implemented; Docker runtime verification pending |
 | **2. Private storage and snippets** | Multipart upload/resume/abort, quarantine, safe snippet editor | Implemented; real AWS/Compose verification pending |
-| **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Planned |
+| **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Implemented; trusted scanner integration and infrastructure verification pending |
 | **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Planned |
 | **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Planned |
 | **6. Deployment and operations** | Deployment, monitoring, runbooks, portfolio documentation | Planned |

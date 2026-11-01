@@ -4,7 +4,7 @@ const uploadSchema = new Schema({
   filename: { type: String, required: true }, size: { type: Number, required: true }, mimeType: { type: String, required: true }, fingerprint: { type: String, required: true },
   objectKey: { type: String, required: true, unique: true }, storageUploadId: String,
   status: { type: String, enum: ['initializing', 'uploading', 'completing', 'quarantined', 'aborting', 'aborted'], required: true },
-  scanStatus: { type: String, enum: ['pending'], default: 'pending', required: true },
+  scanStatus: { type: String, enum: ['pending', 'clean', 'rejected'], default: 'pending', required: true },
   expiresAt: { type: Date, required: true },
 }, { timestamps: true });
 uploadSchema.index({ ownerId: 1, createdAt: -1 });

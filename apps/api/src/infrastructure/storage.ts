@@ -1,4 +1,5 @@
-import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, ListPartsCommand, CompleteMultipartUploadCommand, HeadObjectCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
+import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, ListPartsCommand, CompleteMultipartUploadCommand, HeadObjectCommand, AbortMultipartUploadCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errors.js';
@@ -11,6 +12,7 @@ export interface Storage {
   complete(key: string, uploadId: string, parts: StoredPart[]): Promise<void>;
   head(key: string): Promise<{ size: number; mimeType: string } | null>;
   abort(key: string, uploadId: string): Promise<void>;
+  open?(key: string, signal: AbortSignal): Promise<Readable>;
 }
 export function createStorage(env: Env): Storage {
   const client = new S3Client({ region: env.S3_REGION, ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT, forcePathStyle: true } : {}),
@@ -50,6 +52,11 @@ export function createStorage(env: Env): Storage {
     async abort(key, uploadId) {
       try { await client.send(new AbortMultipartUploadCommand({ ...base(key), UploadId: uploadId })); }
       catch (error) { if (!(error instanceof Error && error.name === 'NoSuchUpload')) throw error; }
+    },
+    async open(key, signal) {
+      const result = await client.send(new GetObjectCommand(base(key)), { abortSignal: signal });
+      if (!(result.Body instanceof Readable)) throw new Error('Storage body is not a Node stream');
+      return result.Body;
     },
   };
 }

@@ -1,5 +1,7 @@
 # Phase 2: private files and snippets
 
+Phase 2 implementation record. Secure sharing is now described in [Phase 3](phase-3.md); storage setup and recovery instructions below still apply.
+
 Phase 2 implements authenticated file creation, resumable multipart uploads and private code snippets. Public shares, transfer tickets, downloads, notifications and scheduled cleanup remain future work. See `prompt.md` for the six-phase scope; the older README roadmap placed streaming and background work in different phases and has now been aligned.
 
 ## Run locally

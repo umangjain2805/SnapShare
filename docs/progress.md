@@ -1,5 +1,48 @@
 # SnapShare progress
 
+## Phase 3 - implemented; infrastructure and scanner integration pending
+
+- [x] Owner-scoped secure share creation, cursor-paginated listing and idempotent revocation.
+- [x] Required Argon2id passwords, random public tokens hashed at rest, exact 24-hour expiry, one claim, notifications enabled.
+- [x] Generic rate-limited public metadata with no private title, filename, content or owner disclosure.
+- [x] Conditional claim transaction commits share consumption, hashed single-use transfer ticket and pending outbox event together.
+- [x] Secret random client nonce recovers the same issued ticket after a lost claim response, without renewing the deadline.
+- [x] Atomic ticket redemption serialized against revocation; two-minute start window capped by share expiry.
+- [x] Private S3-to-API streaming with backpressure, abort/timeout, exact-size verification and safe attachment headers.
+- [x] HEAD and Range cannot consume a ticket; failed/redelivered streams stay consumed.
+- [x] File creation/claim/redemption requires a trusted clean scan; pending/rejected files remain blocked.
+- [x] Owner create/copy/manage UI and public password/claim/download UI, including mobile states.
+- [x] Concurrency, rollback, expiry, isolation, scan gate, stream-failure and browser recovery checks.
+- [x] README, API/recovery documentation and checklist updated.
+- [ ] Integrate a trusted scanner before making production file shares available.
+- [ ] Verify Docker services, persistent Redis connectivity, real AWS/durable private storage and remote CI.
+
+### Phase 3 verification evidence
+
+Locally verified on Windows with Node 22.19.0, pnpm 12.11.2, Chrome and Moto 5.2.5:
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Passed; no dependencies added in this phase |
+| `pnpm lint` | Passed |
+| `pnpm typecheck` | Passed, including browser/integration tests |
+| `pnpm test` | 34 passed: 3 unit, 8 auth, 9 asset, 14 share integration |
+| `pnpm build` | Passed; existing third-party Zod/Rollup annotation warnings only |
+| `pnpm test:browser` with Chrome | Passed: original auth/session/mobile flow |
+| `pnpm test:browser:workspace` with Chrome | Passed: existing multipart/snippet flow plus clean-fixture file share, hidden metadata, wrong password, lost committed claim response, reload recovery, native streamed file/snippet downloads, SHA-256 byte comparison, replay rejection, revocation and mobile overflow |
+| `git diff --check` | Passed |
+| Docker / real AWS / remote CI | Not executed; no success claimed |
+
+The 20-way claim test produced exactly one committed claim, ticket and outbox event. Five concurrent retries with the same nonce returned the same ticket and deadline. Injecting an outbox write failure left the share unclaimed and created no ticket/event. Two competing redemptions produced one success. Failed/truncated storage streams remained consumed. Screenshot artifacts under ignored `test-results/share-public-{desktop,mobile}.png`, `share-owner-desktop.png` and workspace images were visually reviewed.
+
+### Phase 3 files and decisions
+
+New backend files: `apps/api/src/modules/shares/{model,repository,service,controller,routes}.ts`. API app/startup register the routes and indexes; storage adds private GetObject streaming. The upload model accepts trusted `clean` and `rejected` scan outcomes without adding a client-controlled release route. Shared contracts define strict share/claim inputs and DTOs. Frontend additions are `features/shares/{ShareManager,PublicShare}.tsx` and `lib/resource-api.ts`; dashboard/workspace/styles integrate them. Tests add `tests/integration/shares.test.ts` and extend the existing workspace browser check, which is already in CI. README, development, Phase 2 cross-reference, [phase-3.md](phase-3.md) and this checklist describe actual scope.
+
+Tokens and nonce values remain hashed in MongoDB. Ticket recovery derives the same opaque bearer from the public token and secret random browser nonce; there is no raw/encrypted ticket store or new environment secret. The nonce is a secret, not a predictable request counter. Claim and redemption transactions use snapshot reads, majority writes and a 15-second driver timeout. A transfer must start within two minutes and can run for at most five minutes. A committed claim is never refunded after a lost/failed stream. No reusable S3 GET URL, scheduled cleanup, notification delivery, metadata TTL or worker consumer is added.
+
+File browser tests simulate a trusted clean scan result; they do not perform malware scanning. Snippet sharing works immediately, but normal uploads stay gated until a trusted scanner is integrated. Local S3 HTTP tests do not validate real AWS IAM/signatures. Rate limits are process-local, create-share response loss cannot recover the original URL, and closing/clearing the recipient tab can lose nonce-based recovery. Full manual verification, API shapes and failure semantics are in [phase-3.md](phase-3.md). Phase 4 prerequisites are persistent MongoDB/Redis/private storage, scanner release policy, and outbox/transfer-window-aware cleanup design.
+
 ## Phase 2 - implemented and locally verified; AWS/Compose verification pending
 
 - [x] Authenticated, owner-scoped multipart initiation, part signing/listing, verified completion and retryable abort.
@@ -85,7 +128,7 @@ Rate limiting is process-local, proxy trust stays disabled, and the Compose netw
 ## Next phases
 
 - [x] Phase 2: private multipart storage and safe code snippets, locally verified with an S3 HTTP emulator. Real AWS and Compose checks remain pending.
-- [ ] Phase 3: secure shares, atomic claims and transfer tickets.
+- [x] Phase 3: secure shares, atomic claims, transfer tickets, controlled streaming and pending outbox intent; scanner/infrastructure integration remains pending.
 - [ ] Phase 4: durable notifications, cleanup and reconciliation.
 - [ ] Phase 5: full product UI, analytics, hardening and measured performance.
 - [ ] Phase 6: deployment and operations documentation.
