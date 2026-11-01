@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { z } from 'zod';
-import { createShareSchema, claimShareSchema, opaqueTokenSchema } from '@snapshare/contracts';
+import { createShareSchema, claimShareSchema, opaqueTokenSchema, shareListQuerySchema } from '@snapshare/contracts';
 import type { ShareService } from './service.js';
 import { AppError } from '../../middleware/errors.js';
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i);
@@ -13,7 +13,8 @@ export function createShareController(service: ShareService, appUrl: string) {
       const result = await service.create(owner(res), createShareSchema.parse(req.body));
       res.status(201).json({ share: { id: result.id, url: `${appUrl}/s/${result.token}`, expiresAt: result.expiresAt } });
     },
-    list: async (req: Request, res: Response) => { res.json(await service.list(owner(res), req.query.before === undefined ? undefined : objectId.parse(req.query.before))); },
+    list: async (req: Request, res: Response) => { const query = shareListQuerySchema.parse(req.query); res.json(await service.list(owner(res), query.before, query.state)); },
+    detail: async (req: Request, res: Response) => { res.json({ share: await service.detail(owner(res), objectId.parse(req.params.id)) }); },
     revoke: async (req: Request, res: Response) => { await service.revoke(owner(res), objectId.parse(req.params.id)); res.sendStatus(204); },
     metadata: (_req: Request, res: Response) => {
       // Identical for missing, expired and existing tokens. No title, filename, owner or status disclosed.

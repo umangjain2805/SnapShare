@@ -1,0 +1,23 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { AnalyticsResult } from '@snapshare/contracts';
+import { resourceApi } from '../../lib/resource-api';
+import { Button } from '../../components/ui/button';
+const bytes = (value: number) => `${(value / 1048576).toFixed(1)} MiB`;
+export function Analytics({ ownerId }: { ownerId: string }) {
+  const [days, setDays] = useState('7');
+  const result = useQuery({ queryKey: ['analytics', ownerId, days], queryFn: () => resourceApi<AnalyticsResult>(`/me/analytics?days=${days}`), refetchInterval: 15000, retry: false });
+  const data = result.data;
+  const maximum = Math.max(1, ...(data?.activity.map(day => Math.max(day.uploads, day.claims)) ?? []));
+  return <section id="analytics" className="asset-panel analytics-panel" aria-labelledby="analytics-title"><div className="panel-heading"><div><span className="eyebrow">YOUR WORKSPACE, AT A GLANCE</span><h2 id="analytics-title">Analytics</h2></div><Button size="sm" variant="outline" disabled={result.isFetching} onClick={() => void result.refetch()}>Refresh analytics</Button></div>
+    <p className="muted">Counts reflect retained workspace records. Claims do not confirm saved downloads. Samples may be up to five seconds old.</p>
+    {result.isPending && <p role="status">Loading workspace analytics...</p>}{result.error && <p role="alert" className="error">{result.error.message}</p>}
+    {data && <><div className="metric-grid">{[['Files uploaded', data.totals.uploads], ['Saved snippets', data.totals.snippets], ['Active shares', data.totals.activeShares], ['Shares claimed', data.totals.claims], ['Expired shares', data.totals.expired], ['Transfer failures', data.totals.failedTransfers]].map(([label, value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{Number(value).toLocaleString()}</strong></article>)}</div>
+      <div className="analytics-columns"><div className="storage-card"><h3>Workspace capacity</h3><p><strong>{bytes(data.storage.reservedBytes)}</strong> of {bytes(data.storage.limitBytes)} reserved</p><progress aria-label="Workspace storage usage" value={data.storage.reservedBytes} max={data.storage.limitBytes}/><p>{data.storage.items} / {data.storage.limitItems} items · {bytes(data.storage.storedBytes)} in completed file objects</p><p className="hint">Reservations include unfinished uploads and snippets until abort or verified cleanup.</p></div><div className="storage-card"><h3>Privacy and cleanup</h3><dl><div><dt>Awaiting scan</dt><dd>{data.totals.pendingScan}</dd></div><div><dt>Cleanup pending</dt><dd>{data.totals.cleanupPending}</dd></div><div><dt>Cleanup complete</dt><dd>{data.totals.cleanupComplete}</dd></div><div><dt>Cleanup retries needed</dt><dd>{data.totals.cleanupFailures}</dd></div><div><dt>Streams finished at API</dt><dd>{data.totals.finishedTransfers}</dd></div><div><dt>Revoked shares</dt><dd>{data.totals.revoked}</dd></div></dl></div></div>
+      <div className="panel-heading"><h3>Recent activity</h3><label>Activity period<select aria-label="Activity period" value={days} onChange={event => setDays(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select></label></div><p className="hint">UTC calendar days. Green: uploads. Gold: claims.</p>
+      <div className="activity-chart" role="img" aria-label={`Uploads and claims over ${days} days; exact counts in the activity data table below.`}>{data.activity.map(day => <div className="activity-day" key={day.date} title={`${day.date}: ${day.uploads} uploads, ${day.claims} claims`}><div className="activity-bars"><span style={{ height: `${day.uploads / maximum * 100}%` }}/><span style={{ height: `${day.claims / maximum * 100}%` }}/></div><small>{day.date.slice(5)}</small></div>)}</div>
+      {data.activity.every(day => day.uploads + day.shares + day.claims === 0) && <p className="muted">No recent activity yet. Your first upload or share will appear here.</p>}
+      <details className="activity-table"><summary>Activity data table</summary><div className="table-scroll"><table><caption>Retained activity by UTC day</caption><thead><tr><th>Date</th><th>Uploads</th><th>Shares</th><th>Claims</th><th>Failed transfers</th></tr></thead><tbody>{data.activity.map(day => <tr key={day.date}><th scope="row">{day.date}</th><td>{day.uploads}</td><td>{day.shares}</td><td>{day.claims}</td><td>{day.failedTransfers}</td></tr>)}</tbody></table></div></details><p className="hint">Sampled {new Date(data.sampledAt).toLocaleString()}. Purged metadata is excluded; these are not lifetime totals.</p>
+    </>}
+  </section>;
+}

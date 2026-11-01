@@ -11,6 +11,7 @@ const shareSchema = new Schema({
   lastCleanupQueuedAt: Date,
 }, { timestamps: true });
 shareSchema.index({ ownerId: 1, _id: -1 }); shareSchema.index({ status: 1, expiresAt: 1 });
+shareSchema.index({ ownerId: 1, createdAt: -1 });
 shareSchema.index({ sourceType: 1, sourceId: 1, status: 1 });
 shareSchema.index({ purgeAfter: 1 }, { expireAfterSeconds: 0 });
 export const Share = model('Share', shareSchema);

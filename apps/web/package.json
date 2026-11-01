@@ -10,6 +10,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@snapshare/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.5",

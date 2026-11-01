@@ -1,5 +1,7 @@
 # Phase 4: durable notifications and cleanup
 
+Phase 4 implementation record. Current product UI, owner analytics and measured performance are in [Phase 5](phase-5.md).
+
 Phase 4 adds a separate BullMQ worker, transactional-outbox dispatch, in-app notifications, an optional email webhook adapter, safe storage cleanup and reconciliation. It preserves the Phase 3 claim transaction and one-time transfer semantics.
 
 ## Local setup

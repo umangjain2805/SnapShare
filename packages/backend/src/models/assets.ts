@@ -16,4 +16,4 @@ export const UploadSession = model('UploadSession', uploadSchema);
 const snippetSchema = new Schema({ ...lifecycleFields, ownerId: { type: String, required: true, index: true }, title: { type: String, required: true }, language: { type: String, required: true }, text: { type: String, required: true } }, { timestamps: true });
 snippetSchema.index({ purgeAfter: 1 }, { expireAfterSeconds: 0 });
 export const Snippet = model('Snippet', snippetSchema);
-export const AssetQuota = model('AssetQuota', new Schema({ _id: String, bytes: { type: Number, default: 0, required: true }, items: { type: Number, default: 0, required: true } }));
+export const AssetQuota = model('AssetQuota', new Schema({ _id: String, bytes: { type: Number, default: 0, required: true }, items: { type: Number, default: 0, required: true }, shareVersion: { type: Number, default: 0 } }));

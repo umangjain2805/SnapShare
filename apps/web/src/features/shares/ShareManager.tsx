@@ -3,12 +3,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createShareSchema, type ShareView, type UploadView, type SnippetView } from '@snapshare/contracts';
 import { resourceApi } from '../../lib/resource-api';
 import { Button } from '../../components/ui/button';
+import { ShareDetails } from './ShareDetails';
 type SharePage = { shares: ShareView[]; nextCursor: string | null };
 export function ShareManager({ ownerId }: { ownerId: string }) {
+  const [state, setState] = useState('');
   const cache = useQueryClient(); const [before, setBefore] = useState<string>();
   const uploads = useQuery({ queryKey: ['uploads', ownerId], queryFn: () => resourceApi<{ uploads: UploadView[] }>('/uploads') });
   const snippets = useQuery({ queryKey: ['snippets', ownerId], queryFn: () => resourceApi<{ snippets: SnippetView[] }>('/snippets') });
-  const shares = useQuery({ queryKey: ['shares', ownerId, before], queryFn: () => resourceApi<SharePage>(`/me/shares${before ? `?before=${before}` : ''}`) });
+  const shares = useQuery({ queryKey: ['shares', ownerId, before, state], queryFn: () => resourceApi<SharePage>(`/me/shares?${new URLSearchParams({ ...(before ? { before } : {}), ...(state ? { state } : {}) })}`) });
+  const [detailId, setDetailId] = useState<string>();
   const [source, setSource] = useState(''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(''); const [url, setUrl] = useState(''); const [message, setMessage] = useState('');
   async function submit(event: FormEvent) {
@@ -27,7 +30,7 @@ export function ShareManager({ ownerId }: { ownerId: string }) {
     catch (error) { setError(error instanceof Error ? error.message : 'Revocation failed'); }
     finally { setBusy(false); }
   }
-  return <section className="asset-panel share-panel" aria-labelledby="shares-heading"><span className="eyebrow">ONE MOMENT. ONE CLAIM.</span><h2 id="shares-heading">Create a secure share</h2><p className="muted">Expires in 24 hours. One claim. Password required. A failed download still consumes the claim.</p>
+  return <section id="shares" className="asset-panel share-panel" aria-labelledby="shares-heading"><span className="eyebrow">ONE MOMENT. ONE CLAIM.</span><h2 id="shares-heading">Create a secure share</h2><p className="muted">Expires in 24 hours. One claim. Password required. A failed download still consumes the claim.</p>
     <form className="snippet-form" onSubmit={event => void submit(event)}>
       <label htmlFor="share-source">Item to share</label><select id="share-source" value={source} required onChange={event => setSource(event.target.value)}><option value="">Choose a private item</option>{uploads.data?.uploads.filter(u => u.status === 'quarantined' && u.scanStatus === 'clean' && u.cleanupStatus !== 'deleting').map(u => <option key={u.id} value={`upload:${u.id}`}>File: {u.filename}</option>)}{snippets.data?.snippets.map(s => <option key={s.id} value={`snippet:${s.id}`}>Snippet: {s.title}</option>)}</select>
       <p className="hint">Files awaiting a trusted malware scan cannot be shared.</p>
@@ -37,8 +40,9 @@ export function ShareManager({ ownerId }: { ownerId: string }) {
     </form>
     {url && <div className="created-share"><label>New share link<input readOnly value={url} onFocus={event => event.currentTarget.select()}/></label><p>Save this link now. It cannot be recovered after leaving this page.</p><Button variant="outline" onClick={() => { void navigator.clipboard.writeText(url).then(() => setMessage('Share link copied.'), () => setError('Copy failed. Select and copy the link above.')); }}>Copy share link</Button></div>}
     {error && <p role="alert" className="error">{error}</p>}<p role="status">{message}</p>
-    <h3>My shares</h3>{shares.isPending && <p>Loading shares...</p>}{shares.error && <p role="alert">{shares.error.message} <button onClick={() => void shares.refetch()}>Retry</button></p>}{shares.data?.shares.length === 0 && <p className="muted">No shares yet.</p>}
-    <ul className="asset-list">{shares.data?.shares.map(share => <li key={share.id}><div><strong>{share.title}</strong><small>{share.status} · {share.downloadCount} / {share.maxDownloads} claims | Cleanup {share.cleanupStatus === 'complete' ? 'complete' : 'pending'} · Expires {new Date(share.expiresAt).toLocaleString()}</small></div>{share.status !== 'revoked' && <Button size="sm" variant="outline" disabled={busy} onClick={() => void revoke(share.id)}>Revoke {share.title}</Button>}</li>)}</ul>
+    <div className="panel-heading"><h3>My shares</h3><label>Filter shares<select aria-label="Filter shares" value={state} onChange={event => { setState(event.target.value); setBefore(undefined); setDetailId(undefined); }}><option value="">All states</option><option value="active">Active</option><option value="claimed">Claimed</option><option value="expired">Expired</option><option value="revoked">Revoked</option></select></label></div>{shares.isPending && <p>Loading shares...</p>}{shares.error && <p role="alert">{shares.error.message} <button onClick={() => void shares.refetch()}>Retry</button></p>}{shares.data?.shares.length === 0 && <p className="muted">No shares yet.</p>}
+    <ul className="asset-list">{shares.data?.shares.map(share => <li key={share.id}><div><strong>{share.title}</strong><small>{share.status} · {share.downloadCount} / {share.maxDownloads} claims | Cleanup {share.cleanupStatus === 'complete' ? 'complete' : 'pending'} · Expires {new Date(share.expiresAt).toLocaleString()}</small></div><Button size="sm" variant="outline" onClick={() => setDetailId(share.id)}>Details {share.title}</Button>{share.status !== 'revoked' && <Button size="sm" variant="outline" disabled={busy} onClick={() => void revoke(share.id)}>Revoke {share.title}</Button>}</li>)}</ul>
+    {detailId && <ShareDetails id={detailId} ownerId={ownerId} close={() => setDetailId(undefined)}/>}
     <div className="upload-actions">{before && <Button size="sm" variant="outline" onClick={() => setBefore(undefined)}>Newest shares</Button>}{shares.data?.nextCursor && <Button size="sm" variant="outline" onClick={() => setBefore(shares.data!.nextCursor!)}>Older shares</Button>}</div>
   </section>;
 }

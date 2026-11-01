@@ -9,11 +9,12 @@ import { useSession } from '../features/auth/use-session';
 import { Workspace } from '../features/workspace/Workspace';
 import { ShareManager } from '../features/shares/ShareManager';
 import { Notifications } from '../features/shares/Notifications';
+import { Analytics } from '../features/analytics/Analytics';
 import { PublicShare } from '../features/shares/PublicShare';
 
 function Brand() { return <Link to="/" className="brand"><span className="brand-icon"><Zap size={22} fill="currentColor" /></span>SnapShare<span className="brand-tag">workspace</span></Link>; }
 function Status({ error, retry }: { error?: boolean; retry?: () => void }) {
-  return <div className="status" role={error ? 'alert' : 'status'}>{error ? <><p>We couldn?t connect to your workspace.</p><Button variant="outline" onClick={retry}>Try again</Button></> : 'Opening your workspace?'}</div>;
+  return <div className="status" role={error ? 'alert' : 'status'}>{error ? <><p>We could not connect to your workspace.</p><Button variant="outline" onClick={retry}>Try again</Button></> : 'Opening your workspace...'}</div>;
 }
 function AuthPage({ signup = false }: { signup?: boolean }) {
   const session = useSession();
@@ -40,7 +41,7 @@ function AuthPage({ signup = false }: { signup?: boolean }) {
       <label>Password<input name="password" type="password" autoComplete={signup ? 'new-password' : 'current-password'} minLength={signup ? 12 : 1} maxLength={128} required aria-describedby={signup ? 'password-help' : undefined} placeholder={signup ? 'At least 12 characters' : 'Enter your password'} /></label>
       {signup && <p id="password-help" className="hint">Use at least 12 characters. A long, unique passphrase works well.</p>}
       {(validation || mutation.error) && <p role="alert" className="error">{validation || mutation.error?.message}</p>}
-      <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Please wait?' : signup ? 'Create account' : 'Sign in'}<ArrowUpRight size={17}/></Button>
+      <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Please wait...' : signup ? 'Create account' : 'Sign in'}<ArrowUpRight size={17}/></Button>
     </form><p className="switch">{signup ? 'Already have an account?' : 'New to SnapShare?'} <Link to={signup ? '/signin' : '/signup'}>{signup ? 'Sign in' : 'Create an account'}</Link></p><div className="auth-note"><ShieldCheck size={16}/><span>Your account keeps your workspace private.</span></div></div><footer className="auth-footer">Thoughtful sharing. Built one step at a time.</footer></main>
   </div>;
 }
@@ -50,7 +51,7 @@ function Dashboard() {
   if (session.isPending) return <Status />;
   if (session.isError) return <Status error retry={() => void session.refetch()} />;
   if (!session.data) return <Navigate to="/signin" replace />;
-  return <div className="dashboard"><header className="topbar"><Brand /><div className="account"><span className="account-email">{session.data.email}</span><Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut size={15}/>{logout.isPending ? 'Signing out?' : 'Sign out'}</Button></div></header><main className="workspace"><div className="workspace-label"><span className="dot"/> YOUR WORKSPACE</div><div className="welcome"><div><h1>Hello, {session.data.name.split(' ')[0]}.</h1><p className="muted">A fresh space for the things you?ll share.</p></div><span className="pill"><Check size={14}/> ACCOUNT READY</span></div>{logout.error && <p className="error" role="alert">{logout.error.message}</p>}
-  <Workspace ownerId={session.data.id} /><ShareManager ownerId={session.data.id} /><Notifications ownerId={session.data.id} /><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
+  return <div className="dashboard"><header className="topbar"><Brand /><div className="account"><span className="account-email">{session.data.email}</span><Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut size={15}/>{logout.isPending ? 'Signing out...' : 'Sign out'}</Button></div></header><main className="workspace"><div className="workspace-label"><span className="dot"/> YOUR WORKSPACE</div><div className="welcome"><div><h1>Hello, {session.data.name.split(' ')[0]}.</h1><p className="muted">A private space for your files and code.</p></div><span className="pill"><Check size={14}/> ACCOUNT READY</span></div>{logout.error && <p className="error" role="alert">{logout.error.message}</p>}
+  <nav className="workspace-nav" aria-label="Workspace sections"><a href="#files">Files</a><a href="#snippets">Snippets</a><a href="#shares">My shares</a><a href="#notifications">Notifications</a><a href="#analytics">Analytics</a></nav><div className="workspace-intro"><strong>One link. One claim. You stay in control.</strong><span>24-hour expiry, a required password, and private storage.</span></div><Workspace ownerId={session.data.id} /><ShareManager ownerId={session.data.id} /><Notifications ownerId={session.data.id} /><Analytics ownerId={session.data.id} /><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
 }
 export function App() { return <Routes><Route path="/" element={<Navigate to="/dashboard" replace/>}/><Route path="/signin" element={<AuthPage key="signin"/>}/><Route path="/signup" element={<AuthPage key="signup" signup/>}/><Route path="/dashboard" element={<Dashboard/>}/><Route path="/s/:token" element={<PublicShare/>}/><Route path="*" element={<main className="status"><h1>Page not found</h1><Link to="/">Return to your workspace</Link></main>}/></Routes>; }

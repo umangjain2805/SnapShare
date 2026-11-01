@@ -20,7 +20,10 @@ export const uploadInputSchema = z.object({
   size: z.number().int().min(1).max(MAX_FILE_SIZE),
   mimeType: z.enum(allowedMimeTypes),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-}).strict();
+}).strict().superRefine((input, ctx) => {
+  const extensions: Record<string, string[]> = { 'application/pdf': ['pdf'], 'image/png': ['png'], 'image/jpeg': ['jpg', 'jpeg'], 'text/plain': ['txt'], 'application/zip': ['zip'] };
+  if (!extensions[input.mimeType]?.includes(input.filename.split('.').at(-1)!.toLowerCase())) ctx.addIssue({ code: 'custom', path: ['filename'], message: 'Filename extension must match the supported file type' });
+});
 export const partInputSchema = z.object({ partNumber: z.number().int().min(1).max(Math.ceil(MAX_FILE_SIZE / PART_SIZE)) }).strict();
 export const languages = ['plaintext', 'javascript', 'typescript', 'css', 'markup', 'json', 'python'] as const;
 export const snippetInputSchema = z.object({
@@ -43,3 +46,12 @@ export type CreateShareInput = z.infer<typeof createShareSchema>;
 export type ClaimShareInput = z.infer<typeof claimShareSchema>;
 export type ShareView = { id: string; sourceType: 'upload' | 'snippet'; sourceId: string; title: string; status: string; expiresAt: string; downloadCount: number; maxDownloads: number; notificationsEnabled: boolean; cleanupStatus?: string };
 export type ClaimView = { ticket: string; startBefore: string; filename: string; size: number; sourceType: 'upload' | 'snippet' };
+export const analyticsQuerySchema = z.object({ days: z.enum(['7', '30']).default('7') }).strict();
+export const shareListQuerySchema = z.object({ before: z.string().regex(/^[a-f0-9]{24}$/i).optional(), state: z.enum(['active', 'expired', 'claimed', 'revoked']).optional() }).strict();
+export type AnalyticsResult = {
+  sampledAt: string; days: number;
+  totals: { uploads: number; snippets: number; shares: number; claims: number; activeShares: number; expired: number; revoked: number; failedTransfers: number; finishedTransfers: number; cleanupPending: number; cleanupComplete: number; pendingScan: number; cleanupFailures: number };
+  storage: { reservedBytes: number; storedBytes: number; limitBytes: number; items: number; limitItems: number };
+  activity: { date: string; uploads: number; shares: number; claims: number; failedTransfers: number }[];
+};
+export type ShareDetail = { id: string; title: string; status: string; createdAt: string; expiresAt: string; sourceType: string; sourceId: string; downloadCount: number; maxDownloads: number; notificationsEnabled: boolean; cleanupStatus: string; transfer: null | { status: string; delivery: string; startBefore: string; redeemedAt: string | null; streamDeadline: string | null } };

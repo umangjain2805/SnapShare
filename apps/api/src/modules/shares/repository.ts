@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { randomUUID } from 'node:crypto';
 import { Share, TransferTicket, OutboxEvent } from './model.js';
-import { UploadSession, Snippet } from '../assets/model.js';
+import { UploadSession, Snippet, AssetQuota } from '../assets/model.js';
 import { AppError } from '../../middleware/errors.js';
 import type { CreateShareInput } from '@snapshare/contracts';
 import { availableAsset } from '@snapshare/backend/models/lifecycle';
@@ -13,13 +13,20 @@ export const shareRepository = {
   findSnippet: (id: string, ownerId: string) => Snippet.findOne({ _id: id, ownerId, ...availableAsset }),
   create: async (input: Omit<CreateShareInput, 'password'> & { ownerId: string; title: string; tokenHash: string; passwordHash: string; expiresAt: Date; createdAt: Date }) => {
     const { sourceType, sourceId, ownerId, title, tokenHash, passwordHash, expiresAt, createdAt } = input;
+    try { await AssetQuota.updateOne({ _id: ownerId }, { $setOnInsert: { bytes: 0, items: 0 } }, { upsert: true }); }
+    catch (error) { if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 11000)) throw error; }
     return mongoose.connection.transaction(async session => {
+      // Serialize retained-share budget checks even when concurrent creations use different assets.
+      await AssetQuota.updateOne({ _id: ownerId }, { $inc: { shareVersion: 1 } }, { session });
+      if (await Share.countDocuments({ ownerId }).session(session) >= 500) throw new AppError(409, 'Workspace limit reached (500 retained shares)');
       if (!(await touchAsset(sourceType, sourceId, ownerId, session)).modifiedCount) throw new AppError(409, 'Source unavailable or cleanup has started');
       const [share] = await Share.create([{ sourceType, sourceId, ownerId, title, tokenHash, passwordHash, expiresAt, createdAt }], { session }); return share!;
     }, transactionOptions);
   },
   findByToken: (tokenHash: string) => Share.findOne({ tokenHash }).select('+passwordHash'),
-  list: (ownerId: string, before?: string) => Share.find({ ownerId, ...(before ? { _id: { $lt: before } } : {}) }).sort({ _id: -1 }).limit(51),
+  list: (ownerId: string, before?: string, state?: string) => Share.find({ ownerId, ...(before ? { _id: { $lt: before } } : {}), ...(state === 'active' ? { status: 'active', expiresAt: { $gt: new Date() } } : state === 'expired' ? { status: 'active', expiresAt: { $lte: new Date() } } : state ? { status: state } : {}) }).sort({ _id: -1 }).limit(51),
+  detail: (ownerId: string, id: string) => Share.findOne({ ownerId, _id: id }).lean(),
+  ticket: (shareId: string) => TransferTicket.findOne({ shareId }).select('status delivery startBefore redeemedAt streamDeadline -_id').lean(),
   revoke: (ownerId: string, id: string) => Share.findOneAndUpdate({ _id: id, ownerId }, { $set: { status: 'revoked' } }, { new: true }),
   async claim(shareId: string, claimHash: string, tokenHash: string) {
     return mongoose.connection.transaction(async session => {

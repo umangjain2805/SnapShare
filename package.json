@@ -18,7 +18,8 @@
     "services:down": "docker compose down",
     "test:browser": "pnpm prepare:shared && tsx tests/browser/auth.smoke.ts",
     "prepare:shared": "pnpm --filter @snapshare/contracts build && pnpm --filter @snapshare/backend build",
-    "test:worker": "pnpm prepare:shared && pnpm --filter worker build && tsx tests/worker/runtime.smoke.ts"
+    "test:worker": "pnpm prepare:shared && pnpm --filter worker build && tsx tests/worker/runtime.smoke.ts",
+    "benchmark": "pnpm prepare:shared && tsx benchmarks/run.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

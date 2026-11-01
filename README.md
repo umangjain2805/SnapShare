@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Phases 1-4 implement private resumable uploads, safe snippets, secure one-time sharing, durable in-app notifications, and retryable cleanup/reconciliation. Files require a trusted clean scan; scanner integration remains pending. Tests use real MongoDB/Redis and an S3 HTTP emulator; target AWS, Docker runtime and remote CI require separate verification. See [Phase 4 operations and checks](docs/phase-4.md), [share semantics](docs/phase-3.md) and [progress](docs/progress.md).
+> **Project status:** Phases 1-5 implement the responsive private workspace, secure one-time sharing, notifications/cleanup, owner analytics, quotas and measured local performance checks. Normal file sharing still requires a trusted scan; scanner integration is pending. See [Phase 5 usage and limits](docs/phase-5.md), [measured performance](docs/performance.md) and [progress](docs/progress.md). Target AWS, Docker/hosting and remote CI need separate verification; no deployment is claimed.
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -249,7 +249,7 @@ sequenceDiagram
 
 ## API design
 
-**Implemented through Phase 3:** auth, uploads/snippets, share creation/management, atomic claims and transfers. Notification routes are implemented in Phase 4; analytics remains planned. See [Phase 3 API](docs/phase-3.md#api) for exact inputs and response semantics.
+**Implemented through Phase 3:** auth, uploads/snippets, share creation/management, atomic claims and transfers. Notification routes are implemented in Phase 4; owner analytics is implemented in Phase 5. See [Phase 3 API](docs/phase-3.md#api) for exact inputs and response semantics.
 
 | Method | Route | Behavior |
 |---|---|---|
@@ -353,7 +353,7 @@ pnpm dev
 
 Open `http://localhost:5173`; the frontend proxies `/api` to port 4000. On PowerShell use `Copy-Item .env.example .env`. The root `.env` is read only by backend processes. `APP_URL` must match the browser's exact origin without a trailing slash.
 
-Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Share creation, claims, transfer streaming and owner management are also implemented; see [Phase 3 API](docs/phase-3.md#api). Notifications and mark-read routes are implemented; analytics remains planned.
+Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Share creation, claims, transfer streaming and owner management are also implemented; see [Phase 3 API](docs/phase-3.md#api). Notifications and mark-read routes are implemented; owner analytics is implemented in Phase 5.
 
 ### Current `.env.example` keys
 
@@ -397,11 +397,12 @@ pnpm test:integration
 pnpm test:browser
 pnpm test:worker
 pnpm test:browser:workspace
+pnpm benchmark # Requires k6 and Python Moto dependencies.
 pnpm lint
 pnpm typecheck
 ```
 
-Record real measured numbers (for example, p95 API latency, tested concurrency, retry recovery rate) in `docs/performance.md` once benchmarks have been run. **Do not invent performance claims.**
+Actual local k6 medians, p95s, throughput, baseline comparison and environment are recorded in [docs/performance.md](docs/performance.md). The documented small-sample/emulator limits apply.
 
 ## Roadmap
 
@@ -411,7 +412,7 @@ Record real measured numbers (for example, p95 API latency, tested concurrency, 
 | **2. Private storage and snippets** | Multipart upload/resume/abort, quarantine, safe snippet editor | Implemented; real AWS/Compose verification pending |
 | **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Implemented; trusted scanner integration and infrastructure verification pending |
 | **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Implemented and locally verified; target infrastructure verification pending |
-| **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Planned |
+| **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Implemented and locally verified; documented nonproduction limits |
 | **6. Deployment and operations** | Deployment, monitoring, runbooks, portfolio documentation | Planned |
 
 Phases follow [prompt.md](prompt.md). The earlier roadmap grouped streaming/background work differently; the implementation plan is now reflected here.
@@ -444,7 +445,7 @@ Add these once they exist:
 - **Demo video:** `TBD`
 - **Architecture decisions:** `docs/decisions/`
 - **Performance report:** `docs/performance.md`
-- **Screenshots:** `docs/screenshots/`
+- **Screenshots:** [Phase 5 workspace and analytics](docs/phase-5.md#updated-architecture)
 
 ---
 

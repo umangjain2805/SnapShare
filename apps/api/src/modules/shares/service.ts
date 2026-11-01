@@ -30,13 +30,18 @@ export function createShareService(storage: Storage) {
       const share = await repo.create({ sourceType: input.sourceType, sourceId: input.sourceId, ownerId, title: asset.filename, tokenHash: hashToken(token), passwordHash: hashedPassword, createdAt, expiresAt: new Date(createdAt.getTime() + 86400000) });
       return { id: share.id as string, token, expiresAt: share.expiresAt.toISOString() };
     },
-    async list(ownerId: string, before?: string) {
-      const records = await repo.list(ownerId, before);
+    async list(ownerId: string, before?: string, state?: string) {
+      const records = await repo.list(ownerId, before, state);
       const shares: ShareView[] = records.slice(0, 50).map(s => ({ id: s.id as string, sourceType: s.sourceType as 'upload' | 'snippet', sourceId: s.sourceId, title: s.title, status: s.status === 'active' && s.expiresAt.getTime() <= Date.now() ? 'expired' : s.status, expiresAt: s.expiresAt.toISOString(), downloadCount: s.downloadCount, maxDownloads: s.maxDownloads, notificationsEnabled: s.notificationsEnabled }));
       return { shares: shares.map((share, i) => ({ ...share, cleanupStatus: records[i]!.cleanupStatus })), nextCursor: records.length > 50 ? shares.at(-1)!.id : null };
     },
     async revoke(ownerId: string, id: string) {
       if (!await repo.revoke(ownerId, id)) throw new AppError(404, 'Share not found');
+    },
+    async detail(ownerId: string, id: string) {
+      const share = await repo.detail(ownerId, id); if (!share) throw new AppError(404, 'Share not found');
+      const ticket = await repo.ticket(id);
+      return { id, title: share.title, sourceType: share.sourceType, sourceId: share.sourceId, status: share.status === 'active' && share.expiresAt.getTime() <= Date.now() ? 'expired' : share.status, createdAt: share.createdAt.toISOString(), expiresAt: share.expiresAt.toISOString(), downloadCount: share.downloadCount, maxDownloads: share.maxDownloads, notificationsEnabled: share.notificationsEnabled, cleanupStatus: share.cleanupStatus ?? 'pending', transfer: ticket ? { status: ticket.status, delivery: ticket.delivery, startBefore: ticket.startBefore.toISOString(), redeemedAt: ticket.redeemedAt?.toISOString() ?? null, streamDeadline: ticket.streamDeadline?.toISOString() ?? null } : null };
     },
     async claim(token: string, input: ClaimShareInput) {
       const share = await repo.findByToken(hashToken(token));

@@ -1,5 +1,44 @@
 # SnapShare progress
 
+## Phase 5 - implemented and locally verified; nonproduction limits documented
+
+- [x] Responsive workspace navigation, side-by-side desktop file/snippet tools, bounded list rendering and mobile layouts.
+- [x] Owner share details, validated state filters/cursor pagination, existing secure public flow, copy/revoke and notifications UI.
+- [x] Owner-only analytics for retained uploads/snippets/shares, claims, expiry, transfer outcomes, storage reservations, scans and cleanup.
+- [x] Seven/thirty-day UTC activity chart, accessible exact data table, refresh/loading/error/empty states and sample timestamps.
+- [x] MongoDB aggregation/index support and bounded five-second owner/period cache with coalesced reads; access decisions remain uncached.
+- [x] Transactionally serialized 500-retained-share budget plus existing 1 GiB/100-item quota, strict queries and declared MIME/extension validation.
+- [x] Incremental 2 MiB SHA-256 browser hashing preserves resume identity while bounding file-buffer allocation.
+- [x] Analytics isolation/privacy/rate-limit/pagination/quota tests and expanded desktop/mobile end-to-end assertions.
+- [x] Real k6 initiation, metadata, claim and streaming measurements; equivalent baseline/optimized analytics comparison with raw metrics.
+- [x] Updated architecture diagram, captured/reviewed screenshots, README, usage/security/performance documentation.
+- [ ] Integrate trusted malware scanning before normal production file sharing; unscanned files remain gated.
+- [ ] Verify target AWS, persistent Docker, hosting, proxy/distributed limits, real provider configuration and remote CI in Phase 6.
+
+### Phase 5 verification evidence
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed |
+| `pnpm typecheck` | Passed, including tests and benchmark TypeScript |
+| `pnpm test` | 46 passed: 4 unit, 8 auth, 9 asset, 14 share, 7 worker and 4 analytics integration |
+| `pnpm build` | Passed for contracts/backend/API/worker/web; existing third-party Zod/Rollup annotation warnings |
+| `pnpm test:browser` with Chrome | Passed: existing authentication/session/mobile journey |
+| `pnpm test:browser:workspace` with Chrome/Redis/Moto | Passed: end-to-end multipart/share/download/notification/cleanup plus type rejection, incremental hash compatibility, owner details/filtering, analytics period/table/refresh, tenant isolation and mobile overflow |
+| `pnpm test:worker` | Passed against real Redis 7.4.8, including restart/queue loss/retry and compiled worker process |
+| `pnpm benchmark` | Passed with k6 2.3.0, MongoDB 7.0.24 and Moto; all eight measured runs passed status/body checks |
+| `git diff --check` | Passed |
+| AWS / Docker runtime / real email-scanner / deployment / remote CI | Not executed; no success claimed |
+
+Measured local analytics medians were 36.08/39.18 ms for the uncached document-reduction baseline and 4.93/5.25 ms for cached aggregation in the two runs. The optimized path allows five-second staleness; this is not a pure aggregation-only or earlier-release before/after comparison. Core endpoint measurements and all p95/throughput/sample/environment limits are in [performance.md](performance.md), with raw nonsecret [metrics](performance-results.json). These two-VU small samples are not production capacity or SLA evidence.
+
+### Phase 5 files and decisions
+
+New API analytics repository/service/controller/routes expose safe owner aggregates; share handlers add filtered listing, private details and a serialized retained-share budget. Contracts, quota schema and share indexing support those features. New Analytics.tsx and ShareDetails.tsx plus App/workspace/share/notification/style edits provide the UI. Tests add analytics integration/cache cases and extend the existing browser flow. benchmarks/baseline.ts, api.k6.js and run.ts plus the benchmark script/typecheck scope supply real measurement; the baseline route exists only in the loopback harness. The @noble/hashes browser dependency enables bounded incremental hashing. Documentation includes [phase-5.md](phase-5.md), performance reports, README updates and real captures in docs/screenshots/phase-5-*.png.
+
+No raw recipient IP/user-agent/access log collection is added. Metrics summarize retained metadata and can overlap states; they are not lifetime counts or cloud billing. Existing one-claim/password/24-hour/notification defaults remain fixed. Scanner integration remains an explicit nonproduction limitation: tests simulate trusted clean results and normal uploads remain blocked. Rate limits/caches are local to one API process; deployment must configure shared abuse controls and verify proxy/header/storage/worker settings. Phase 6 prerequisites and manual verification are in [phase-5.md](phase-5.md).
+
 ## Phase 4 - implemented and locally verified; target infrastructure pending
 
 - [x] Shared compiled backend package for API/worker models, environment validation, storage and cleanup transactions; compatibility imports preserved.
@@ -172,7 +211,7 @@ Rate limiting is process-local, proxy trust stays disabled, and the Compose netw
 - [x] Phase 2: private multipart storage and safe code snippets, locally verified with an S3 HTTP emulator. Real AWS and Compose checks remain pending.
 - [x] Phase 3: secure shares, atomic claims, transfer tickets, controlled streaming and pending outbox intent; scanner/infrastructure integration remains pending.
 - [x] Phase 4: durable notifications, cleanup and reconciliation, locally verified with real Redis/BullMQ and an S3 emulator.
-- [ ] Phase 5: full product UI, analytics, hardening and measured performance.
+- [x] Phase 5: responsive product UI, owner analytics, quota/validation hardening and measured local performance; production prerequisites documented.
 - [ ] Phase 6: deployment and operations documentation.
 
 Manual verification steps and exact run commands are in [development.md](development.md).

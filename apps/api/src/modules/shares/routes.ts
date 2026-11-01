@@ -20,6 +20,6 @@ export function shareRoutes(env: Env, storage: Storage) {
   const auth = createAuthService(env.SESSION_DAYS);
   router.use(async (req, res, next) => { const token: unknown = req.cookies?.[cookieName(env)]; res.locals.ownerId = (await auth.current(typeof token === 'string' ? token : undefined)).id; next(); });
   router.use(rateLimit({ windowMs: 60000, limit: 30, keyGenerator: (_req, res) => res.locals.ownerId as string, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many share management requests. Try again shortly.' } }));
-  router.post('/shares', c.create); router.get('/me/shares', c.list); router.delete('/me/shares/:id', c.revoke);
+  router.post('/shares', c.create); router.get('/me/shares', c.list); router.get('/me/shares/:id', c.detail); router.delete('/me/shares/:id', c.revoke);
   return router;
 }

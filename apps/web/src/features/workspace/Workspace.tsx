@@ -7,6 +7,7 @@ import 'prismjs/components/prism-python';
 import 'prismjs/themes/prism-tomorrow.css';
 import { languages, snippetInputSchema, uploadInputSchema, MAX_FILE_SIZE, type UploadView, type SnippetView } from '@snapshare/contracts';
 import { Button } from '../../components/ui/button';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { resourceApi as workspaceApi } from '../../lib/resource-api';
 function tokens(nodes: (string | Prism.Token)[]): ReactNode {
   return nodes.map((node, i) => typeof node === 'string' ? node : <span key={i} className={`token ${node.type}`}>{typeof node.content === 'string' ? node.content : tokens(Array.isArray(node.content) ? node.content : [node.content])}</span>);
@@ -18,7 +19,7 @@ function Preview({ text, language }: { text: string; language: string }) {
 }
 const sizeLabel = (size: number) => `${(size / 1024 / 1024).toFixed(1)} MiB`;
 export function Workspace({ ownerId }: { ownerId: string }) {
-  const cache = useQueryClient();
+  const cache = useQueryClient(); const [fileLimit, setFileLimit] = useState(10); const [snippetLimit, setSnippetLimit] = useState(10);
   const uploads = useQuery({ queryKey: ['uploads', ownerId], queryFn: () => workspaceApi<{ uploads: UploadView[] }>('/uploads') });
   const snippets = useQuery({ queryKey: ['snippets', ownerId], queryFn: () => workspaceApi<{ snippets: SnippetView[] }>('/snippets') });
   const [file, setFile] = useState<File>(); const [selected, setSelected] = useState<UploadView>();
@@ -33,11 +34,19 @@ export function Workspace({ ownerId }: { ownerId: string }) {
     setBusy(true); setError(''); setMessage('Checking file identity…'); paused.current = false;
     try {
       if (file.size < 1 || file.size > MAX_FILE_SIZE) throw new Error('Choose a file between 1 byte and 256 MiB.');
-      const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map(b => b.toString(16).padStart(2, '0')).join('');
+      const hash = sha256.create();
+      for (let offset = 0; offset < file.size; offset += 2097152) {
+        if (paused.current) throw new Error('Paused. Select Resume upload to continue.');
+        hash.update(new Uint8Array(await file.slice(offset, offset + 2097152).arrayBuffer()));
+        setMessage(`Checking file identity: ${Math.min(100, Math.round((offset + 2097152) / file.size * 100))}%`);
+      }
+      const fingerprint = Array.from(hash.digest()).map(b => b.toString(16).padStart(2, '0')).join('');
       if (paused.current) throw new Error('Paused. Select Resume upload to continue.');
       let upload = selected;
       if (!upload) {
-        const input = uploadInputSchema.parse({ filename: file.name, size: file.size, mimeType: file.type || 'application/octet-stream', fingerprint });
+        const parsed = uploadInputSchema.safeParse({ filename: file.name, size: file.size, mimeType: file.type || 'application/octet-stream', fingerprint });
+        if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Check file size and type');
+        const input = parsed.data;
         upload = (await workspaceApi<{ upload: UploadView }>('/uploads/initiate', input)).upload;
         setSelected(upload); await refresh();
       }
@@ -81,12 +90,12 @@ export function Workspace({ ownerId }: { ownerId: string }) {
   }
   async function saveSnippet(event: FormEvent) {
     event.preventDefault(); setSaving(true); setSnippetError(''); setSaved('');
-    try { const input = snippetInputSchema.parse({ title, language, text }); await workspaceApi('/snippets', input); await cache.invalidateQueries({ queryKey: ['snippets', ownerId] }); setSaved('Snippet saved privately.'); }
+    try { const parsed = snippetInputSchema.safeParse({ title, language, text }); if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Check snippet details'); const input = parsed.data; await workspaceApi('/snippets', input); await cache.invalidateQueries({ queryKey: ['snippets', ownerId] }); setSaved('Snippet saved privately.'); }
     catch (error) { setSnippetError(error instanceof Error ? error.message : 'Save failed'); }
     finally { setSaving(false); }
   }
   return <div className="workspace-tools">
-    <section className="asset-panel" aria-labelledby="upload-heading"><span className="eyebrow">PRIVATE FILES</span><h2 id="upload-heading">Upload a file</h2><p className="muted">PDF, PNG, JPEG, plain text or ZIP · Up to 256 MiB. Workspace limit: 1 GiB and 100 files/snippets.</p>
+    <section id="files" className="asset-panel" aria-labelledby="upload-heading"><span className="eyebrow">PRIVATE FILES</span><h2 id="upload-heading">Upload a file</h2><p className="muted">PDF, PNG, JPEG, plain text or ZIP · Up to 256 MiB. Workspace limit: 1 GiB and 100 files/snippets.</p>
       <div className="dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!busy) { setFile(event.dataTransfer.files[0]); setError(''); } }}>
         <label htmlFor="upload-file">{selected ? `Reselect the original file: ${selected.filename}` : 'Drop a file here or choose a file'}</label>
         <input id="upload-file" type="file" disabled={busy} accept=".pdf,.png,.jpg,.jpeg,.txt,.zip" onChange={event => { setFile(event.target.files?.[0]); setError(''); }}/>
@@ -95,11 +104,11 @@ export function Workspace({ ownerId }: { ownerId: string }) {
       <div className="upload-actions"><Button disabled={busy || !file} onClick={() => void upload()}>{selected ? 'Resume upload' : 'Upload file'}</Button>{busy && <Button variant="outline" onClick={() => { paused.current = true; xhr.current?.abort(); }}>Pause upload</Button>}{selected && !busy && <Button variant="outline" onClick={() => { setSelected(undefined); setProgress(0); }}>Start another file</Button>}</div>
       {(busy || progress > 0) && <progress max={100} value={progress} aria-label="Upload progress"/>}<p role="status">{message || (busy ? `${progress}% uploaded` : '')}</p>{error && <p role="alert" className="error">{error}</p>}
       <h3>Your files</h3>{uploads.isPending && <p>Loading files…</p>}{uploads.error && <p role="alert">{uploads.error.message} <button onClick={() => void uploads.refetch()}>Retry</button></p>}{uploads.data?.uploads.length === 0 && <p className="muted">Your first private upload will appear here.</p>}
-      <ul className="asset-list">{uploads.data?.uploads.map(upload => <li key={upload.id}><div><strong>{upload.filename}</strong><small>{sizeLabel(upload.size)} · {upload.cleanupStatus === 'deleting' ? (upload.cleanupFailed ? 'Cleanup retry pending' : 'Cleaning up') : upload.status === 'quarantined' ? (upload.scanStatus === 'clean' ? 'Ready to share' : upload.scanStatus === 'rejected' ? 'Scan rejected' : 'Awaiting scan') : upload.status} · {upload.status === 'quarantined' ? 'Private' : `Session expires ${new Date(upload.expiresAt).toLocaleString()}`}</small></div><div className="upload-actions">{upload.cleanupStatus !== 'deleting' && ['uploading', 'completing'].includes(upload.status) && <Button size="sm" variant="outline" disabled={busy} onClick={() => { setSelected(upload); setFile(undefined); setMessage('Choose the original file, then resume.'); setProgress(0); }}>Resume {upload.filename}</Button>}{upload.cleanupStatus !== 'deleting' && ['uploading', 'aborting'].includes(upload.status) && <Button size="sm" variant="outline" disabled={busy} onClick={() => void abort(upload)}>Abort {upload.filename}</Button>}</div></li>)}</ul>
+      <ul className="asset-list">{uploads.data?.uploads.slice(0, fileLimit).map(upload => <li key={upload.id}><div><strong>{upload.filename}</strong><small>{sizeLabel(upload.size)} · {upload.cleanupStatus === 'deleting' ? (upload.cleanupFailed ? 'Cleanup retry pending' : 'Cleaning up') : upload.status === 'quarantined' ? (upload.scanStatus === 'clean' ? 'Ready to share' : upload.scanStatus === 'rejected' ? 'Scan rejected' : 'Awaiting scan') : upload.status} · {upload.status === 'quarantined' ? 'Private' : `Session expires ${new Date(upload.expiresAt).toLocaleString()}`}</small></div><div className="upload-actions">{upload.cleanupStatus !== 'deleting' && ['uploading', 'completing'].includes(upload.status) && <Button size="sm" variant="outline" disabled={busy} onClick={() => { setSelected(upload); setFile(undefined); setMessage('Choose the original file, then resume.'); setProgress(0); }}>Resume {upload.filename}</Button>}{upload.cleanupStatus !== 'deleting' && ['uploading', 'aborting'].includes(upload.status) && <Button size="sm" variant="outline" disabled={busy} onClick={() => void abort(upload)}>Abort {upload.filename}</Button>}</div></li>)}</ul>{(uploads.data?.uploads.length ?? 0) > fileLimit && <Button variant="outline" size="sm" onClick={() => setFileLimit(value => value + 10)}>Show more files</Button>}
     </section>
-    <section className="asset-panel" aria-labelledby="snippet-heading"><span className="eyebrow">A HOME FOR YOUR CODE</span><h2 id="snippet-heading">Create a snippet</h2>
+    <section id="snippets" className="asset-panel" aria-labelledby="snippet-heading"><span className="eyebrow">A HOME FOR YOUR CODE</span><h2 id="snippet-heading">Create a snippet</h2>
       <form className="snippet-form" onSubmit={event => void saveSnippet(event)}><label>Snippet title<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)}/></label><label>Language<select aria-label="Language" value={language} onChange={event => setLanguage(event.target.value as typeof language)}>{languages.map(value => <option key={value} value={value}>{value}</option>)}</select></label><label>Code<textarea required maxLength={32768} spellCheck={false} value={text} onChange={event => setText(event.target.value)}/></label><p className="hint">{new TextEncoder().encode(text).length} / 32768 bytes. Text is displayed safely and never executed.</p><Preview text={text} language={language}/><Button disabled={saving} type="submit">{saving ? 'Saving…' : 'Save snippet'}</Button>{snippetError && <p role="alert" className="error">{snippetError}</p>}<p role="status">{saved}</p></form>
-      <h3>Your snippets</h3>{snippets.isPending && <p>Loading snippets…</p>}{snippets.error && <p role="alert">{snippets.error.message} <button onClick={() => void snippets.refetch()}>Retry</button></p>}{snippets.data?.snippets.length === 0 && <p className="muted">No snippets yet.</p>}{snippets.data?.snippets.map(snippet => <details className="saved-snippet" key={snippet.id}><summary>{snippet.title} · {snippet.language}</summary><Preview text={snippet.text} language={snippet.language}/><Button size="sm" variant="outline" onClick={() => { void navigator.clipboard.writeText(snippet.text).then(() => setSaved('Snippet copied.'), () => setSnippetError('Copy failed. Select text in the preview to copy.')); }}>Copy snippet</Button></details>)}
-    </section>
+      <h3>Your snippets</h3>{snippets.isPending && <p>Loading snippets…</p>}{snippets.error && <p role="alert">{snippets.error.message} <button onClick={() => void snippets.refetch()}>Retry</button></p>}{snippets.data?.snippets.length === 0 && <p className="muted">No snippets yet.</p>}{snippets.data?.snippets.slice(0, snippetLimit).map(snippet => <details className="saved-snippet" key={snippet.id}><summary>{snippet.title} · {snippet.language}</summary><Preview text={snippet.text} language={snippet.language}/><Button size="sm" variant="outline" onClick={() => { void navigator.clipboard.writeText(snippet.text).then(() => setSaved('Snippet copied.'), () => setSnippetError('Copy failed. Select text in the preview to copy.')); }}>Copy snippet</Button></details>)}
+    {(snippets.data?.snippets.length ?? 0) > snippetLimit && <Button variant="outline" size="sm" onClick={() => setSnippetLimit(value => value + 10)}>Show more snippets</Button>}</section>
   </div>;
 }
