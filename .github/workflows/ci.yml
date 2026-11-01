@@ -37,3 +37,25 @@ jobs:
       - run: docker compose exec -T redis redis-cli ping
       - if: always()
         run: docker compose down
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target api -t snapshare-api:ci .
+      - run: docker build --target worker -t snapshare-worker:ci .
+      - run: docker build --target web -t snapshare-web:ci .
+      - name: Validate production Compose schema
+        run: |
+          cp infra/production.env.example .env.production
+          IMAGE_PREFIX=local/snapshare IMAGE_TAG=ci docker compose -f compose.production.yml config --quiet
+      - name: Verify static web health and SPA fallback
+        run: |
+          docker network create snapshare-ci
+          docker run -d --name api --network snapshare-ci snapshare-api:ci node -e 'require("http").createServer((q,s)=>s.end("ok")).listen(4000)'
+          docker run -d --name web --network snapshare-ci -p 8080:8080 snapshare-web:ci
+          for i in $(seq 1 20); do curl -fsS http://localhost:8080/health && break || sleep 1; done
+          curl -fsS http://localhost:8080/dashboard | grep '<div id="root">'
+          curl -fsS http://localhost:8080/api/health
+      - if: always()
+        run: docker rm -f web api || true

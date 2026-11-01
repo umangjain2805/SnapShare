@@ -7,6 +7,7 @@ import { parseEnv } from '../../apps/api/src/config/env.js';
 import { connectDatabase, disconnectDatabase } from '../../apps/api/src/infrastructure/database.js';
 import { User, Session } from '../../apps/api/src/modules/auth/model.js';
 import { hashToken } from '../../apps/api/src/modules/auth/service.js';
+import { createStorage } from '../../packages/backend/src/storage.js';
 let mongo: MongoMemoryReplSet;
 const origin = 'http://localhost:5173';
 const env = parseEnv({ NODE_ENV: 'test', MONGODB_URI: 'mongodb://localhost/test', LOG_LEVEL: 'silent', APP_URL: origin });
@@ -25,6 +26,16 @@ beforeAll(async () => {
 beforeEach(async () => { await Promise.all([User.deleteMany({}), Session.deleteMany({})]); app = createApp(env); });
 afterAll(async () => { await disconnectDatabase(); await mongo?.stop(); });
 describe('account sessions on a real MongoDB replica set', () => {
+  it('returns uncached generic health and database-backed readiness', async () => {
+    expect((await request(app).get('/api/health')).body).toEqual({ status: 'ok' });
+    const ready = await request(app).get('/api/ready');
+    expect(ready.status).toBe(200);
+    expect(ready.headers['cache-control']).toBe('no-store');
+    const unavailable = createApp({ ...env, S3_BUCKET: 'private-bucket' }, { ...createStorage(env), assertConfigured() { throw new Error('private dependency details'); } });
+    const failed = await request(unavailable).get('/api/ready');
+    expect(failed.status).toBe(503);
+    expect(failed.body).toEqual({ status: 'unavailable' });
+  });
   it('registers, stores only hashed secrets, returns safe user data and logs out', async () => {
     const registered = await post('/api/auth/register');
     expect(registered.status).toBe(201);

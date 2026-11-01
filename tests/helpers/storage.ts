@@ -26,7 +26,7 @@ export async function startStorage() {
     const client = new S3Client({ endpoint, region: 'us-east-1', forcePathStyle: true, credentials });
     await new Promise<void>((resolve, reject) => {
       const setup = spawn(process.execPath, ['--import', 'tsx', 'apps/api/src/scripts/setup-storage.ts'], { windowsHide: true, stdio: 'ignore', env: {
-        ...process.env, NODE_ENV: 'test', APP_URL: 'http://localhost:5173', MONGODB_URI: 'mongodb://localhost/test',
+        ...process.env, NODE_ENV: 'test', APP_URL: `http://localhost:${process.env.BROWSER_TEST_PORT ?? 5173}`, MONGODB_URI: 'mongodb://localhost/test',
         S3_REGION: 'us-east-1', S3_ENDPOINT: endpoint, S3_BUCKET: bucket, S3_ACCESS_KEY_ID: credentials.accessKeyId, S3_SECRET_ACCESS_KEY: credentials.secretAccessKey,
       } });
       setup.once('error', reject); setup.once('exit', code => code === 0 ? resolve() : reject(new Error('Local storage setup failed')));

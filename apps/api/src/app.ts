@@ -17,12 +17,13 @@ export function createApp(env: Env, storage: Storage = createStorage(env)) {
   const app = express();
   const logger = createLogger(env.LOG_LEVEL);
   app.disable('x-powered-by');
-  // Proxy trust remains disabled until a known deployment topology is configured.
+  if (env.TRUSTED_PROXIES) app.set('trust proxy', env.TRUSTED_PROXIES.split(',').map(value => value.trim()));
   app.use(helmet());
   app.use((req, res, next) => {
     const requestId = randomUUID();
     res.setHeader('X-Request-Id', requestId);
-    res.on('finish', () => logger.info({ requestId, method: req.method, status: res.statusCode }, 'request'));
+    const started = performance.now();
+    res.on('finish', () => logger.info({ requestId, method: req.method, status: res.statusCode, durationMs: Math.round(performance.now() - started) }, 'request'));
     next();
   });
   app.use(cors({ origin: env.APP_URL, credentials: true }));
@@ -38,9 +39,17 @@ export function createApp(env: Env, storage: Storage = createStorage(env)) {
   app.use('/api/snippets', express.json({ limit: '256kb' }));
   app.use(express.json({ limit: '16kb' }));
   app.use(cookieParser());
+  app.use(['/api/health', '/api/ready'], (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
-  app.get('/api/ready', (_req, res) => {
-    const ready = mongoose.connection.readyState === 1;
+  app.get('/api/ready', async (_req, res) => {
+    let ready = false;
+    try {
+      if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+        await mongoose.connection.db.admin().command({ ping: 1 }, { timeoutMS: 2000 });
+        if (env.S3_BUCKET || env.NODE_ENV === 'production') storage.assertConfigured?.();
+        ready = true;
+      }
+    } catch { /* Health responses intentionally omit dependency details. */ }
     res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'unavailable' });
   });
   app.use('/api/auth', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); }, authRoutes(env));

@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Phases 1-5 implement the responsive private workspace, secure one-time sharing, notifications/cleanup, owner analytics, quotas and measured local performance checks. Normal file sharing still requires a trusted scan; scanner integration is pending. See [Phase 5 usage and limits](docs/phase-5.md), [measured performance](docs/performance.md) and [progress](docs/progress.md). Target AWS, Docker/hosting and remote CI need separate verification; no deployment is claimed.
+> **Project status:** Phase 6 adds container/release configuration, health checks and operational/portfolio documentation (see [Phase 6](docs/phase-6.md)). Phases 1-5 implement the responsive private workspace, secure one-time sharing, notifications/cleanup, owner analytics, quotas and measured local performance checks. Normal file sharing still requires a trusted scan; scanner integration is pending. See [Phase 5 usage and limits](docs/phase-5.md), [measured performance](docs/performance.md) and [progress](docs/progress.md). Target AWS, Docker/hosting and remote CI need separate verification; no deployment is claimed.
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -68,7 +68,9 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 - [x] Create transfer tickets and outbox events in the same MongoDB transaction as a successful claim.
 - [x] Run Redis/BullMQ workers for notifications and cloud-object cleanup.
 - [x] Recover from failed cleanup, lost jobs, and abandoned uploads via reconciliation.
-- [ ] Add rate limits, quotas, validations, audit events, and monitoring.
+- [x] Enforce API rate limits, atomic quotas, validation and minimal claim/outbox records.
+- [x] Emit structured request timing and reconciliation metrics; define operational alert thresholds.
+- [ ] Verify target alert delivery and shared rate limits before horizontal scaling.
 - [x] Test authorization, concurrency, failure recovery, and end-to-end sharing.
 
 ## Technology stack
@@ -413,7 +415,7 @@ Actual local k6 medians, p95s, throughput, baseline comparison and environment a
 | **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Implemented; trusted scanner integration and infrastructure verification pending |
 | **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Implemented and locally verified; target infrastructure verification pending |
 | **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Implemented and locally verified; documented nonproduction limits |
-| **6. Deployment and operations** | Deployment, monitoring, runbooks, portfolio documentation | Planned |
+| **6. Deployment and operations** | Containers, release configuration, health checks, runbooks, portfolio documentation | Implemented configuration; Docker/remote CI/target deployment unverified |
 
 Phases follow [prompt.md](prompt.md). The earlier roadmap grouped streaming/background work differently; the implementation plan is now reflected here.
 
@@ -438,14 +440,29 @@ Phases follow [prompt.md](prompt.md). The earlier roadmap grouped streaming/back
 
 ## Demo and documentation
 
-Add these once they exist:
+- **Current setup and deployment:** [Operations](docs/operations.md)
+- **API examples:** [API reference](docs/api.md)
+- **Demo and interview explanation:** [Portfolio guide](docs/portfolio.md)
+- **Performance evidence:** [Measured local results](docs/performance.md)
+- **Screenshots:** [Workspace](docs/screenshots/phase-5-workspace-desktop.png), [analytics desktop](docs/screenshots/phase-5-analytics-desktop.png), [analytics mobile](docs/screenshots/phase-5-analytics-mobile.png)
+- **Live app/video:** not published; use the reproducible local demo.
 
-- **Live app:** `TBD`
-- **API documentation:** `TBD`
-- **Demo video:** `TBD`
-- **Architecture decisions:** `docs/decisions/`
-- **Performance report:** `docs/performance.md`
-- **Screenshots:** [Phase 5 workspace and analytics](docs/phase-5.md#updated-architecture)
+### Entity relationships
+
+```mermaid
+erDiagram
+  USER ||--o{ SESSION : authenticates
+  USER ||--o{ UPLOAD_SESSION : owns
+  USER ||--o{ SNIPPET : owns
+  USER ||--o{ SHARE : creates
+  SHARE }o--o| UPLOAD_SESSION : references
+  SHARE }o--o| SNIPPET : references
+  SHARE ||--o{ TRANSFER_TICKET : authorizes
+  SHARE ||--o{ OUTBOX_EVENT : emits
+  OUTBOX_EVENT ||--o| NOTIFICATION : delivers
+```
+
+A share references one file or one snippet; multiple shares can reference an asset. Cleanup waits for all references and transfer windows. These relationships are enforced by application transactions/policy rather than Mongo foreign keys.
 
 ---
 

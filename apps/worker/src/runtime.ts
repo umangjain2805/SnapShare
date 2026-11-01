@@ -32,6 +32,7 @@ export function createRuntime(env: Env, storage: Storage, email?: EmailProvider,
     worker.on('stalled', () => log('job_stalled'));
   }
   let stopping = false; let timer: ReturnType<typeof setTimeout> | undefined; let running: Promise<void> | undefined;
+  let lastSuccess = 0;
   const cycle = async () => {
     try {
       const dispatched = await engine.dispatch(); const reconciled = await engine.reconcile();
@@ -41,11 +42,13 @@ export function createRuntime(env: Env, storage: Storage, email?: EmailProvider,
         UploadSession.countDocuments({ cleanupStatus: 'deleting', cleanupFailedAt: { $exists: true } }),
       ]);
       log('reconciliation_cycle', { dispatched, reconciled, pendingEvents, oldestPendingMs: oldest ? Date.now() - oldest.createdAt.getTime() : 0, notificationJobs, cleanupJobs, failedAssets });
+      lastSuccess = Date.now();
     }
     catch { log('reconciliation_failed'); }
   };
   return {
     engine, notifications, cleanup, notifyWorker, cleanupWorker,
+    isReady: () => !stopping && lastSuccess > 0 && Date.now() - lastSuccess < Math.max(60000, env.WORKER_INTERVAL_MS * 3),
     async start() {
       await Promise.all([notifications.waitUntilReady(), cleanup.waitUntilReady(), notifyWorker.waitUntilReady(), cleanupWorker.waitUntilReady()]);
       const loop = () => { running = cycle().finally(() => { if (!stopping) timer = setTimeout(loop, env.WORKER_INTERVAL_MS); }); };

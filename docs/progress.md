@@ -212,6 +212,10 @@ Rate limiting is process-local, proxy trust stays disabled, and the Compose netw
 - [x] Phase 3: secure shares, atomic claims, transfer tickets, controlled streaming and pending outbox intent; scanner/infrastructure integration remains pending.
 - [x] Phase 4: durable notifications, cleanup and reconciliation, locally verified with real Redis/BullMQ and an S3 emulator.
 - [x] Phase 5: responsive product UI, owner analytics, quota/validation hardening and measured local performance; production prerequisites documented.
-- [ ] Phase 6: deployment and operations documentation.
+- [x] Phase 6: container/release configuration, readiness, operations and portfolio documentation; target verification remains pending.
 
 Manual verification steps and exact run commands are in [development.md](development.md).
+
+## Phase 6
+
+See [phase-6.md](phase-6.md) for implemented configuration, verification evidence and remaining target checks. No live deployment is claimed.

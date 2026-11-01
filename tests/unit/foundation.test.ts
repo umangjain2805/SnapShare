@@ -18,4 +18,12 @@ describe('foundation contracts', () => {
     expect(hashToken('secret')).not.toBe('secret');
     expect(hashToken('secret')).not.toBe(hashToken('another-secret'));
   });
+  it('fails closed for incomplete production infrastructure and unsafe proxy settings', () => {
+    const production = { NODE_ENV: 'production', APP_URL: 'https://share.example.com', MONGODB_URI: 'mongodb://localhost/db', S3_BUCKET: 'private-bucket', REDIS_URL: 'rediss://redis.example.com:6379' };
+    expect(parseEnv(production).NODE_ENV).toBe('production');
+    for (const override of [{ S3_BUCKET: '' }, { REDIS_URL: 'redis://localhost:6379' }, { S3_ENDPOINT: 'http://localhost:9000' }, { LOG_LEVEL: 'debug' }, { TRUSTED_PROXIES: 'true' }, { TRUSTED_PROXIES: '0.0.0.0/0' }, { TRUSTED_PROXIES: '999.1.1.1' }]) {
+      expect(() => parseEnv({ ...production, ...override })).toThrow();
+    }
+    expect(parseEnv({ ...production, TRUSTED_PROXIES: '10.0.1.0/24,127.0.0.1' }).TRUSTED_PROXIES).toContain('/24');
+  });
 });

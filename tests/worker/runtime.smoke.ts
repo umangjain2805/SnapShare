@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { startRedis } from '../helpers/redis.js';
 import { createRuntime } from '../../apps/worker/src/runtime.js';
@@ -27,10 +28,11 @@ try {
   const env = parseEnv({ NODE_ENV: 'test', MONGODB_URI: mongo.getUri(), REDIS_URL: redis.url, WORKER_INTERVAL_MS: '1000', LOG_LEVEL: 'silent' });
   let deletionAttempts = 0;
   const storage: Storage = { async begin() { return ''; }, async sign() { return ''; }, async parts() { return []; }, async complete() {}, async head() { return null; }, async abort() {}, async remove() { deletionAttempts++; if (deletionAttempts === 1) throw new Error('Transient storage failure'); } };
-  runtime = createRuntime(env, storage); await runtime.start();
+  runtime = createRuntime(env, storage); assert.equal(runtime.isReady(), false); await runtime.start();
   await until(async () => (await OutboxEvent.findById(first._id))?.status === 'processed', 'initial notification');
+  await until(async () => runtime!.isReady(), 'successful reconciliation readiness');
   await runtime.engine.notify(first.eventId); await runtime.engine.notify(first.eventId); assert.equal(await Notification.countDocuments(), 1);
-  await runtime.close(); runtime = undefined;
+  await runtime.close(); assert.equal(runtime.isReady(), false); runtime = undefined;
   const missed = await event();
   await AssetQuota.create({ _id: ownerId, bytes: 10, items: 1 });
   const upload = await UploadSession.create({ ownerId, filename: 'expired.txt', mimeType: 'text/plain', size: 10, fingerprint: 'a'.repeat(64), objectKey: 'quarantine/runtime-test', status: 'quarantined', expiresAt: new Date(0) });
@@ -52,9 +54,19 @@ try {
   assert.equal(await Notification.countDocuments(), 3);
   await runtime.close(); runtime = undefined;
   const nativeEvent = await event();
-  processWorker = spawn(process.execPath, ['apps/worker/dist/index.js'], { windowsHide: true, stdio: 'ignore', env: { ...process.env, NODE_ENV: 'test', MONGODB_URI: mongo.getUri(), REDIS_URL: redis.url, WORKER_INTERVAL_MS: '1000', EMAIL_PROVIDER: 'disabled', LOG_LEVEL: 'silent' } });
+  const reservation = createServer().listen(0, '127.0.0.1');
+  await new Promise<void>(resolve => reservation.once('listening', resolve));
+  const healthAddress = reservation.address(); assert.ok(healthAddress && typeof healthAddress !== 'string');
+  const healthPort = healthAddress.port;
+  await new Promise<void>(resolve => reservation.close(() => resolve()));
+  processWorker = spawn(process.execPath, ['apps/worker/dist/index.js'], { windowsHide: true, stdio: 'ignore', env: { ...process.env, NODE_ENV: 'test', MONGODB_URI: mongo.getUri(), REDIS_URL: redis.url, WORKER_HEALTH_PORT: String(healthPort), WORKER_INTERVAL_MS: '1000', EMAIL_PROVIDER: 'disabled', LOG_LEVEL: 'silent' } });
   await until(async () => (await OutboxEvent.findById(nativeEvent._id))?.status === 'processed', 'compiled separate worker process');
   assert.equal(await Notification.countDocuments(), 4);
+  await until(async () => { try { return (await fetch(`http://127.0.0.1:${healthPort}/ready`)).ok; } catch { return false; } }, 'compiled worker health readiness');
+  const health = await fetch(`http://127.0.0.1:${healthPort}/health`);
+  assert.equal(health.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await health.json(), { status: 'ok' });
+  assert.equal((await fetch(`http://127.0.0.1:${healthPort}/missing`)).status, 404);
   process.stdout.write('Real Redis/BullMQ smoke passed: duplicate events, worker restart, exponential cleanup retry, retained metadata, quota release, Redis outage, lost-queue reconciliation and compiled separate worker process.\n');
 } finally {
   if (processWorker?.pid && processWorker.exitCode === null && processWorker.signalCode === null) { const stopped = new Promise<void>(resolve => processWorker!.once('exit', () => resolve())); processWorker.kill(); await stopped; }

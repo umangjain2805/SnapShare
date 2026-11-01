@@ -1,5 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'vite';
+const browserPort = Number(process.env.BROWSER_TEST_PORT ?? 5173);
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { mkdir } from 'node:fs/promises';
 import { createApp } from '../../apps/api/src/app.js';
@@ -10,12 +11,12 @@ import { User, Session } from '../../apps/api/src/modules/auth/model.js';
 const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
 await connectDatabase(mongo.getUri());
 await Promise.all([User.init(), Session.init()]);
-const env = parseEnv({ NODE_ENV: 'test', APP_URL: 'http://localhost:5173', MONGODB_URI: mongo.getUri(), LOG_LEVEL: 'silent' });
+const env = parseEnv({ NODE_ENV: 'test', APP_URL: `http://localhost:${browserPort}`, MONGODB_URI: mongo.getUri(), LOG_LEVEL: 'silent' });
 const api = createApp(env).listen(0, '127.0.0.1');
 await new Promise<void>(resolve => api.once('listening', resolve));
 const address = api.address();
 if (!address || typeof address === 'string') throw new Error('API did not bind');
-const vite = await createServer({ root: 'apps/web', server: { host: '127.0.0.1', port: 5173, strictPort: true, proxy: { '/api': `http://127.0.0.1:${address.port}` } } });
+const vite = await createServer({ root: 'apps/web', server: { host: '127.0.0.1', port: browserPort, strictPort: true, proxy: { '/api': `http://127.0.0.1:${address.port}` } } });
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 try {
   await vite.listen();
@@ -24,7 +25,7 @@ try {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await mkdir('test-results', { recursive: true });
-  await page.goto('http://localhost:5173/dashboard');
+  await page.goto(`http://localhost:${browserPort}/dashboard`);
   await expect(page).toHaveURL(/\/signin$/);
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
   await page.screenshot({ path: 'test-results/signin-desktop.png', fullPage: true });

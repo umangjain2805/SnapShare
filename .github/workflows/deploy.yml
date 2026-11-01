@@ -1,0 +1,27 @@
+name: Deploy configured target
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Commit SHA of images that passed CI
+        required: true
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: vars.DEPLOY_ENABLED == 'true'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release SHA
+        env:
+          TAG: ${{ inputs.image_tag }}
+        run: '[[ "$TAG" =~ ^[a-f0-9]{40}$ ]]'
+      - name: Invoke configured authenticated deployment adapter
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}
+          TAG: ${{ inputs.image_tag }}
+        run: |
+          test -n "$DEPLOY_URL" && test -n "$DEPLOY_TOKEN"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 60             -H "Authorization: Bearer $DEPLOY_TOKEN" -H 'Content-Type: application/json'             --data "{\"imageTag\":\"$TAG\"}" "$DEPLOY_URL"

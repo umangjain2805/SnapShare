@@ -1,0 +1,45 @@
+# External TLS load balancer, managed MongoDB replica set, Redis and AWS S3 required.
+# Exactly one API/web replica: built-in rate limits are process-local.
+services:
+  api:
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/api:${IMAGE_TAG:?Set immutable IMAGE_TAG}
+    build: { context: ., target: api }
+    env_file: [ .env.production ]
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 20s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  worker:
+    image: ${IMAGE_PREFIX}/worker:${IMAGE_TAG}
+    build: { context: ., target: worker }
+    env_file: [ .env.production ]
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:4001/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+  web:
+    image: ${IMAGE_PREFIX}/web:${IMAGE_TAG}
+    build: { context: ., target: web }
+    ports: ["127.0.0.1:8080:8080"]
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://localhost:8080/health]
+      interval: 15s
+      timeout: 5s
+      retries: 3
