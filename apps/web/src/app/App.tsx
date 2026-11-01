@@ -1,11 +1,12 @@
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { ArrowUpRight, Check, FileText, FolderClosed, LockKeyhole, LogOut, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowUpRight, Check, LockKeyhole, LogOut, ShieldCheck, Zap } from 'lucide-react';
 import { loginSchema, registerSchema } from '@snapshare/contracts';
 import { Button } from '../components/ui/button';
 import { api } from '../lib/api';
 import { useSession } from '../features/auth/use-session';
+import { Workspace } from '../features/workspace/Workspace';
 
 function Brand() { return <Link to="/" className="brand"><span className="brand-icon"><Zap size={22} fill="currentColor" /></span>SnapShare<span className="brand-tag">workspace</span></Link>; }
 function Status({ error, retry }: { error?: boolean; retry?: () => void }) {
@@ -47,7 +48,6 @@ function Dashboard() {
   if (session.isError) return <Status error retry={() => void session.refetch()} />;
   if (!session.data) return <Navigate to="/signin" replace />;
   return <div className="dashboard"><header className="topbar"><Brand /><div className="account"><span className="account-email">{session.data.email}</span><Button variant="outline" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}><LogOut size={15}/>{logout.isPending ? 'Signing out?' : 'Sign out'}</Button></div></header><main className="workspace"><div className="workspace-label"><span className="dot"/> YOUR WORKSPACE</div><div className="welcome"><div><h1>Hello, {session.data.name.split(' ')[0]}.</h1><p className="muted">A fresh space for the things you?ll share.</p></div><span className="pill"><Check size={14}/> ACCOUNT READY</span></div>{logout.error && <p className="error" role="alert">{logout.error.message}</p>}
-  <section className="welcome-card"><div><span className="eyebrow">YOU?RE ALL SET</span><h2>Good things start<br/>with a secure foundation.</h2><p>Your account is ready. File uploads and code snippets are coming in the next release.</p><span className="phase-label">PRIVATE BY DESIGN <span>Your workspace, ready when you are</span></span></div><div className="folder-art" aria-hidden="true"><FolderClosed size={112} strokeWidth={1}/><span className="art-lock"><LockKeyhole size={25}/></span></div></section>
-  <div className="section-heading"><h2>Your sharing toolkit</h2><span>Coming soon</span></div><div className="toolkit"><article className="tool-card"><span className="tool-icon"><FolderClosed/></span><h3>Files, without the forever.</h3><p>Private uploads with progress tracking and resumable transfers.</p><span className="coming">Coming soon</span></article><article className="tool-card"><span className="tool-icon"><FileText/></span><h3>A home for your code.</h3><p>Create snippets with a focused editor and a readable preview.</p><span className="coming">Coming soon</span></article></div><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
+  <Workspace ownerId={session.data.id} /><div className="foundation-note"><ShieldCheck size={20}/><p><strong>A space of your own.</strong> Your workspace is private and protected by your account.</p></div></main><footer className="dashboard-footer">SnapShare <span>Small moments. Thoughtfully shared.</span></footer></div>;
 }
 export function App() { return <Routes><Route path="/" element={<Navigate to="/dashboard" replace/>}/><Route path="/signin" element={<AuthPage key="signin"/>}/><Route path="/signup" element={<AuthPage key="signup" signup/>}/><Route path="/dashboard" element={<Dashboard/>}/><Route path="*" element={<main className="status"><h1>Page not found</h1><Link to="/">Return to your workspace</Link></main>}/></Routes>; }

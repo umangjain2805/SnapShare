@@ -1,0 +1,2 @@
+# Optional local S3 HTTP emulator used by the workspace browser test.
+moto[server,s3]==5.2.5

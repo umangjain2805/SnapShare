@@ -1,5 +1,44 @@
 # SnapShare progress
 
+## Phase 2 - implemented and locally verified; AWS/Compose verification pending
+
+- [x] Authenticated, owner-scoped multipart initiation, part signing/listing, verified completion and retryable abort.
+- [x] Server-owned keys, shared size/MIME/filename validation, five-minute PUT URLs, 24-hour sessions.
+- [x] Transactional 1 GiB / 100 item owner quota, including concurrent reservations and once-only abort release.
+- [x] Private completed files remain quarantined with pending scan state; no public file access.
+- [x] Browser dropzone, progress, pause/manual resume, server-side recovery list and SHA-256 file identity checks.
+- [x] Private snippet editor, language metadata, 32 KiB UTF-8 limit, inert highlighted preview and copy.
+- [x] Local S3 emulator Compose configuration, loopback-only bucket setup, CORS/public-access/lifecycle configuration.
+- [x] Storage abstraction tests, real MongoDB transactions, local HTTP storage/browser happy path and recovery checks.
+- [x] README roadmap aligned with prompt.md; setup, API, policies, recovery limits and Phase 3 prerequisites documented.
+- [ ] Verify Compose startup, Redis worker and persistent service behavior with Docker.
+- [ ] Provision and verify private AWS/durable S3-compatible storage, IAM and real signature/lifecycle enforcement.
+- [ ] Run the updated workflow on the remote repository.
+
+### Phase 2 verification evidence
+
+Executed locally on Windows, Node 22.19.0, pnpm 12.11.2, installed Chrome and Moto 5.2.5:
+
+| Command | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed |
+| `pnpm typecheck` | Passed, including tests |
+| `pnpm test` | 20 passed: 3 unit, 8 auth integration, 9 asset integration |
+| `pnpm build` | Passed; existing third-party Zod/Rollup annotation warnings |
+| `pnpm test:browser` with Chrome | Passed: existing authentication and mobile checks |
+| `pnpm test:browser:workspace` with Chrome | Passed: three-part 17 MiB + 7 byte HTTP upload, interruption/reload, changed-file rejection, existing-part reuse, byte-level SHA-256 verification, anonymous object access denial, persisted inert HTML snippet, desktop/mobile layout and no page errors |
+| `git diff --check` | Passed |
+| Docker / real AWS / remote CI | Not executed; no success claimed |
+
+Screenshots at `test-results/workspace-desktop.png` and `workspace-mobile.png` were visually reviewed. The HTTP storage test uses a local emulator, not a real AWS bucket. It exercises the actual AWS SDK adapter and browser-to-storage PUT path. Full setup, manual checks, storage privacy requirements and recovery policies are in [phase-2.md](phase-2.md).
+
+### Phase 2 files and decisions
+
+New API files are `infrastructure/storage.ts`, `modules/assets/{model,repository,service,controller,routes}.ts`, and `scripts/setup-storage.ts`. Existing API app, startup and env validation register the feature and indexes. Shared contracts define policies and DTOs. `apps/web/src/features/workspace/Workspace.tsx`, App and styles implement the dashboard tools. Manifests/lockfile add AWS SDK and Prism dependencies. `.env.example`, Compose and CI add local storage/testing configuration. `tests/integration/assets.test.ts`, `tests/browser/workspace.smoke.ts`, `tests/helpers/storage.ts` and `tests/requirements-storage.txt` provide the new checks. README, development, progress and Phase 2 docs describe actual scope.
+
+MongoDB reserves quota atomically with metadata creation; storage operations use retained intermediate states because S3 cannot share that transaction. No asset TTL or scheduled cleanup is introduced. Storage-confirmed parts and HEAD metadata gate completion, but MIME declarations are not content detection. No scanner releases files yet. Initializing or permanently completing failures retain keys/quota for operator reconciliation. The local emulator is ephemeral and does not validate production IAM/signatures. Browser hashing reads up to 256 MiB into memory. Public shares, transfer tickets and downloads belong to Phase 3; scanning release policy and private durable storage must be settled before exposing files.
+
 ## Phase 1 — implemented, local Docker verification pending
 
 - [x] Workspaces: `apps/web`, `apps/api`, `apps/worker`, `packages/contracts`, `packages/config`.
@@ -45,7 +84,7 @@ Rate limiting is process-local, proxy trust stays disabled, and the Compose netw
 
 ## Next phases
 
-- [ ] Phase 2: private multipart storage and safe code snippets. First verify local services, provision private S3/compatible storage, configure backend credentials/roles and choose validation/quota/quarantine policies.
+- [x] Phase 2: private multipart storage and safe code snippets, locally verified with an S3 HTTP emulator. Real AWS and Compose checks remain pending.
 - [ ] Phase 3: secure shares, atomic claims and transfer tickets.
 - [ ] Phase 4: durable notifications, cleanup and reconciliation.
 - [ ] Phase 5: full product UI, analytics, hardening and measured performance.

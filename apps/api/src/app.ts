@@ -8,7 +8,9 @@ import type { Env } from './config/env.js';
 import { createLogger } from './infrastructure/logger.js';
 import { AppError, errorHandler } from './middleware/errors.js';
 import { authRoutes } from './modules/auth/routes.js';
-export function createApp(env: Env) {
+import { createStorage, type Storage } from './infrastructure/storage.js';
+import { assetRoutes } from './modules/assets/routes.js';
+export function createApp(env: Env, storage: Storage = createStorage(env)) {
   const app = express();
   const logger = createLogger(env.LOG_LEVEL);
   app.disable('x-powered-by');
@@ -29,6 +31,8 @@ export function createApp(env: Env) {
     }
     next();
   });
+  // JSON escaping can expand a valid 32 KiB snippet to almost 192 KiB on the wire.
+  app.use('/api/snippets', express.json({ limit: '256kb' }));
   app.use(express.json({ limit: '16kb' }));
   app.use(cookieParser());
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
@@ -37,6 +41,7 @@ export function createApp(env: Env) {
     res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'unavailable' });
   });
   app.use('/api/auth', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); }, authRoutes(env));
+  app.use('/api', assetRoutes(env, storage));
   app.use((_req, _res, next) => next(new AppError(404, 'Route not found')));
   app.use(errorHandler(logger));
   return app;

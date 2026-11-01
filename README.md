@@ -2,7 +2,7 @@
 
 **Secure, temporary file and code snippet sharing — built for real-world reliability.**
 
-> **Project status:** Phase 1 foundation and account authentication are implemented. Docker service startup is pending verification on a Docker-enabled machine. Uploads, snippets, sharing, claims, notifications and cleanup remain **planned**. See [development instructions](docs/development.md) and [progress checklist](docs/progress.md) for implemented scope and verification results.
+> **Project status:** Phases 1 and 2 are implemented: account sessions, private multipart uploads with resume/abort, and safe code snippets. Files remain quarantined pending a trusted scanner. Public shares and downloads are planned for Phase 3. Local tests use an S3 HTTP emulator; persistent Docker services and real AWS storage still need verification. See [Phase 2 setup and recovery](docs/phase-2.md) and [progress](docs/progress.md).
 
 SnapShare is a full-stack platform for uploading files or sharing code snippets through secure links with **expiration policies, password protection, download limits, resumable uploads, notifications, and automatic cloud cleanup**.
 
@@ -48,8 +48,8 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 
 ### Sharing experience
 
-- [ ] Upload supported files (documents, images, archives, etc.) to **private S3 storage**.
-- [ ] Create syntax-highlighted code snippets with a copy-friendly viewer.
+- [x] Upload supported files (documents, images, archives, etc.) to **private S3 storage**.
+- [x] Create syntax-highlighted code snippets with a copy-friendly viewer.
 - [ ] Generate high-entropy, unguessable share URLs.
 - [ ] Choose expiration presets (1 hour, **24 hours**, 7 days).
 - [ ] Protect links with a password (Argon2id hashing).
@@ -59,7 +59,7 @@ This project is designed to demonstrate full-stack engineering beyond basic CRUD
 
 ### Advanced engineering
 
-- [ ] Upload large files directly to S3 with **multipart uploads** and retry/resume support.
+- [x] Upload large files directly to S3 with **multipart uploads** and retry/resume support.
 - [ ] Atomically claim one-time links even under concurrent requests.
 - [ ] Stream protected downloads through the API without exposing reusable object URLs.
 - [ ] Create transfer tickets and outbox events in the same MongoDB transaction as a successful claim.
@@ -194,9 +194,9 @@ db.notifications.createIndex({ sourceEventId: 1 }, { unique: true });
 1. Authenticated client calls `POST /api/uploads/initiate` with file metadata.
 2. API validates quotas, size, type, and ownership and initiates an S3 multipart upload.
 3. Client requests signed URLs for individual parts, then uploads parts **directly to S3**.
-4. Client records part ETags and can retry failed parts.
+4. Server lists storage-confirmed parts and ETags; the browser skips completed parts and can resume after reselecting the original file.
 5. Client calls `POST /api/uploads/:id/complete`; API verifies session ownership, parts, and resulting object.
-6. A verified upload record becomes eligible for share creation. Abandoned multipart uploads are reconciled/aborted.
+6. A verified upload enters quarantine pending malware scanning. Owners can abort unfinished uploads. Automatic reconciliation and share creation remain future phases.
 
 ### B. Secure share creation
 
@@ -330,13 +330,13 @@ Implement a conditional MongoDB `findOneAndUpdate` inside a transaction that als
 
 ## Local development
 
-> Foundation code is runnable. Docker is unavailable in the implementation environment, so persistent Compose service startup and worker connectivity still need verification. See [docs/development.md](docs/development.md) for complete setup, cookie behavior, manual checks and limitations.
+> Auth, uploads and snippets are runnable. Follow [Phase 2 development instructions](docs/phase-2.md) for storage setup, recovery policy, API details and known limitations. Docker service runtime remains unverified locally.
 
 ### Prerequisites
 
 - Node.js 22.12+, pnpm 12.11.2, Docker + Docker Compose
 - A MongoDB replica set (local or Atlas) and Redis
-- Phase 2 prerequisite: AWS account with private S3 storage. S3 is not required for Phase 1.
+- Local S3 emulator included in Compose, or a separately provisioned private AWS S3 bucket.
 
 ### Current commands
 
@@ -344,12 +344,13 @@ Implement a conditional MongoDB `findOneAndUpdate` inside a transaction that als
 pnpm install --frozen-lockfile
 cp .env.example .env
 pnpm services:up
+pnpm storage:setup
 pnpm dev
 ```
 
 Open `http://localhost:5173`; the frontend proxies `/api` to port 4000. On PowerShell use `Copy-Item .env.example .env`. The root `.env` is read only by backend processes. `APP_URL` must match the browser's exact origin without a trailing slash.
 
-Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Other routes above are future contracts.
+Available routes: `GET /api/health`, `GET /api/ready`, `GET /api/auth/me`, and `POST /api/auth/register`, `/api/auth/login`, `/api/auth/logout`. Mutations require the allowed Origin and JSON content type. Upload and snippet routes are also implemented; see [Phase 2 API](docs/phase-2.md#api-and-policy). Shares, transfers, notifications and analytics remain future contracts.
 
 ### Current `.env.example` keys
 
@@ -361,13 +362,18 @@ MONGODB_URI=mongodb://localhost:27017/snapshare?replicaSet=rs0
 REDIS_URL=redis://localhost:6379
 SESSION_DAYS=7
 LOG_LEVEL=info
+S3_BUCKET=snapshare-private
+S3_REGION=us-east-1
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_ACCESS_KEY_ID=local-development
+S3_SECRET_ACCESS_KEY=local-development
 ```
 
-Sessions use random opaque secrets with hashes stored server-side; a cookie-signing secret is unnecessary for this lookup design. Add S3 and email settings only when their phases are implemented. **Never place secrets in frontend variables or source control.** Ensure the MongoDB URI matches the replica-set configuration.
+Sessions use random opaque secrets with hashes stored server-side; a cookie-signing secret is unnecessary for this lookup design. S3 example credentials are for the loopback development emulator only. Use an IAM role and private AWS bucket for production; email settings arrive in a later phase. **Never place secrets in frontend variables or source control.** Ensure the MongoDB URI matches the replica-set configuration.
 
 ## Testing
 
-Current tests cover registration/login/logout, hashed secrets, cookie flags, expiry, account isolation, origin enforcement, validation, rate limits and health. Browser smoke covers the real account flow and mobile layout. Broader planned coverage:
+Current tests cover authentication plus upload ownership, part verification, quota races, completion recovery, abort retries and snippet byte limits. Browser checks cover account flows and HTTP multipart resume, byte verification, anonymous access denial and inert snippet rendering. Broader planned coverage:
 
 | Level | What to verify |
 |---|---|
@@ -397,13 +403,13 @@ Record real measured numbers (for example, p95 API latency, tested concurrency, 
 | Phase | Deliverable | Status |
 |---|---|---|
 | **1. Foundation** | Monorepo, React UI shell, Express API, MongoDB, Docker | Implemented; Docker runtime verification pending |
-| **2. Core sharing** | Private S3 upload, snippet editor, secure share links | ⬜ Planned |
-| **3. Share security** | Passwords, 24-hour expiry, atomic one-time claim | ⬜ Planned |
-| **4. Transfer engine** | Transfer tickets, controlled streaming, failure handling | ⬜ Planned |
-| **5. Background jobs** | BullMQ notifications, cleanup, retries, reconciliation | ⬜ Planned |
-| **6. Production release** | Dashboard, automated tests, CI/CD, deployment, metrics | ⬜ Planned |
+| **2. Private storage and snippets** | Multipart upload/resume/abort, quarantine, safe snippet editor | Implemented; real AWS/Compose verification pending |
+| **3. Secure sharing** | Passwords, expiry, atomic claims, tickets, controlled streaming, outbox | Planned |
+| **4. Durable background work** | Notifications, cleanup, retries, reconciliation | Planned |
+| **5. Product and performance** | Full UI, analytics, hardening, measured benchmarks | Planned |
+| **6. Deployment and operations** | Deployment, monitoring, runbooks, portfolio documentation | Planned |
 
-**Suggested execution:** Establish a deployed MVP after Phases 1–3, then progressively add durability, streaming safeguards, workers, and performance testing.
+Phases follow [prompt.md](prompt.md). The earlier roadmap grouped streaming/background work differently; the implementation plan is now reflected here.
 
 ## Engineering decisions
 

@@ -1,5 +1,7 @@
 # Phase 1 development
 
+For the current upload/snippet setup, use [Phase 2 development](phase-2.md). This document records the original authentication foundation.
+
 ## Setup
 
 Install Node.js 22.12+ (tested with 22.19.0), pnpm 12.11.2, and Docker Desktop with Compose. From the repository root:
@@ -91,10 +93,10 @@ Available API routes:
 7. Resize to mobile. Forms and sign-out remain usable; toolkit cards say coming soon.
 8. Verify Redis worker startup and the MongoDB primary checks above.
 
-## Limits and Phase 2 prerequisites
+## Foundation limits and historical Phase 2 prerequisites
 
 Docker is unavailable in this implementation environment. Compose startup and live Redis worker connectivity require verification on a Docker-enabled machine. Isolated MongoDB tests do not replace verification of persistent local services.
 
-Uploads, snippets, shares, notifications, analytics, cleanup, deployment and password recovery are not implemented. Rate limits are process-local. Deployment-specific proxy configuration and distributed abuse controls are deferred. No deployment or production security certification is claimed.
+Phase 2 now implements private uploads and snippets; see [phase-2.md](phase-2.md). Shares, notifications, analytics, cleanup, deployment and password recovery remain planned. Rate limits are process-local. Deployment-specific proxy configuration and distributed abuse controls are deferred. No deployment or production security certification is claimed.
 
-Before Phase 2, verify local services; provision private S3 or compatible storage; configure backend-only bucket/region/credentials or IAM roles; choose file-size, MIME and quota policies; and define quarantine/scan behavior. Phase 2 adds storage and snippets while preserving authentication.
+Phase 2 selected upload limits, quotas and quarantine policies; see [phase-2.md](phase-2.md). Persistent local service verification and durable private storage provisioning remain outstanding before public sharing.

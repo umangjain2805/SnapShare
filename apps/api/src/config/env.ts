@@ -6,8 +6,14 @@ const schema = z.object({
   MONGODB_URI: z.string().regex(/^mongodb(\+srv)?:\/\//),
   SESSION_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
+  S3_BUCKET: z.string().min(3).optional(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_ENDPOINT: z.url().optional(),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
 }).superRefine((env, ctx) => {
   const url = new URL(env.APP_URL);
+  if (Boolean(env.S3_ACCESS_KEY_ID) !== Boolean(env.S3_SECRET_ACCESS_KEY)) ctx.addIssue({ code: 'custom', path: ['S3_ACCESS_KEY_ID'], message: 'Provide both S3 credential fields or use the default role credential chain' });
   if (url.origin !== env.APP_URL) ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'APP_URL must be an origin without a trailing slash or path' });
   if (env.NODE_ENV === 'production' && url.protocol !== 'https:') ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'Production requires HTTPS' });
 });
